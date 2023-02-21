@@ -1,0 +1,558 @@
+---
+title: "Penstemon penlandii transplant study"
+author: "Michelle DePrenger-Levin"
+date: "2023-02-06"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+---
+```{r}
+
+rm(list=ls()) 
+library(R2jags)
+library(runjags)
+library(mcmcplots)
+library(boot)
+```
+
+
+
+Want to know spring or fall (make a dag)
+
+1. Poisson for reproduction output
+2.Simulate beta distribution for survival of stages [0,1]
+3. binomial for being reproductive or not
+both have parameters: 
+normal for Beta_transplanttime impact of spring vs. fall
+lognormal for Beta_size impact of size  
+
+Put together for MPM and estimate the lambda (or an IPM) 
+#########################################################################################################  
+  simple model of survival (no random effects, no grouping)
+  Penstemon penlandii model and data to test
+  
+```{r,"PePe"}
+pepestring <- '
+  data{
+    # Likelihood:
+        for(i in 1:N){
+          y[i] ~ dbern(theta[i]) ## theta: The probability of survival
+          theta[i] <- alpha + beta * x[i]  
+        }
+    }
+  model{
+  fake <- 0
+  }
+  '
+# parameters for simulations 
+N = 400 # nb of observations
+x <- as.numeric(as.factor(rep(c("trSp","trFa","coSo","coDe"), each = 100))) # predictor
+alpha <- 0.4
+beta = 0.1 # offset of mean survival
+# theta <- .5 # probability of survival (variance is theta(1-theta))
+# parameters are treated as data for the simulation step
+data<-list(N=N,x=x,alpha=alpha,beta=beta)
+
+# Run JAGS but monitor the response variable instead of the parameters because we're checking if the model works 
+out <- run.jags(pepestring, data = data,monitor=c("y"),sample=1, n.chains=1, summarise=FALSE)
+
+Simulated <- coda::as.mcmc(out)
+## spit out y for each data point
+dat <- as.vector(Simulated)
+```
+# Now fit the model used to simulate the data that was generated
+```{r}
+# specify model in BUGS language
+modelpepe <- 	
+paste("	
+model {
+    # Likelihood:
+        for(i in 1:N){
+          y[i] ~ dbern(theta[i]) ## theta: The probability of survival
+          theta[i] <- alpha + beta * x[i]  
+        }
+    # Priors:
+    alpha ~ dbeta(1, 1) # intercept ## uniform, uninformative prior
+    beta ~ dnorm(0, 0.01) # slope
+  }
+")
+writeLines(modelpepe,"lin_reg_pepe.jags") ## written to  "C:/Users/deprengm/OneDrive - Denver Botanic Gardens/Documents"
+# setwd("C:/Users/deprengm/OneDrive - Denver Botanic Gardens/Documents")
+
+# data, dat from simulation
+jags.data <- list(y = dat, N = length(dat), x = x)
+
+# initial values
+inits <- function(){list(alpha = rbeta(1,1,1), beta = rnorm(1))}  
+
+# parameters monitored
+parameters <- c("alpha", "beta")
+
+# MCMC settings
+ni <- 10000
+nt <- 6
+nb <- 5000
+nc <- 2
+
+# call JAGS from R
+res <- jags(jags.data, inits = NULL, 
+            # inits = inits, 
+            parameters, "lin_reg_pepe.jags", n.chains = nc, n.thin = nt, 
+            n.iter = ni, n.burnin = nb,
+            working.directory = getwd()) 
+
+print(res, digits = 3)
+
+## Check convergence 
+# trace plots
+traplot(res,c("alpha", "beta"))
+# posterior distributions
+denplot(res,c("alpha", "beta"))
+```
+
+
+
+
+
+################################################################################################################################################################################################################  
+  simple model of survival (grouping by treatment and control)
+  Penstemon penlandii model and data to test
+  
+```{r,"PePeTC"}
+modelpepe <- '	
+data {
+  for(i in 1:N) {
+    y[i] ~ dbern(p[i])
+    logit(p[i]) <- alpha[ ct[i] ]  ## one for each plot
+  }
+}
+
+  model{
+  fake <- 0
+  }
+  '
+
+
+# parameters for simulations 
+N = 400 # nb of observations
+TC = 4
+ct <- as.factor(rep(c("trSp","trFa","coSo","coDe"), each = 100)) # predictor, 4,3,2,1
+meanAlpha <- mean(c(1.1,1,-1,-2)) ## because centered, looking for difference from mean
+alpha <- c(1.1,1,-1,-2) # index:  coDe = 1, coSo =2,  trFa =3, trSp=4
+inv.logit(alpha) ## 0.7502601 0.7310586 0.2689414 0.1192029 are the probabilities
+# parameters are treated as data for the simulation step
+data<-list(N=N,ct=ct, alpha=alpha)
+
+# Run JAGS but monitor the response variable instead of the parameters because we're checking if the model works 
+out <- run.jags(modelpepe, data = data,monitor=c("y"),sample=1, n.chains=1, summarise=FALSE)
+
+Simulated <- coda::as.mcmc(out)
+## spit out y for each data point
+dat <- as.vector(Simulated)
+
+```
+
+ <https://mmeredith.net/blog/2017/Categories_in_JAGS.htm>     
+# fit model center caegorical coefficients (subtract out the mean)
+```{r}
+# specify model in BUGS language
+modelpepe <- 	
+paste("	
+model {
+  for(i in 1:N) {
+    y[i] ~ dbern(p[i])
+    logit(p[i]) <- alpha[ ct[i] ]  ## one for each plot
+  }
+
+  # Priors
+    for(i in 1:4) {
+      Plottemp[i] ~ dunif(-5,5)   ## find the mean across plotTypes
+    }
+  alpha <- Plottemp - mean(Plottemp) ## resulting in change in centered Plot for each type
+}")
+writeLines(modelpepe,"centered_pepe.jags")
+
+# data, dat from simulation
+jags.data <- list(y = dat, ct = ct, N = length(dat))
+
+# initial values
+inits <- function(){list(alpha = rnorm(1))}  
+
+# parameters monitored
+parameters <- c("alpha")
+
+# MCMC settings
+ni <- 10000
+nt <- 6
+nb <- 5000
+nc <- 2
+
+# call JAGS from R
+res <- jags(jags.data, inits = NULL, parameters, 
+            "centered_pepe.jags", n.chains = nc, n.thin = nt, 
+            n.iter = ni, n.burnin = nb,
+            working.directory = getwd()) 
+
+print(res, digits = 3)
+
+## Check convergence 
+# trace plots
+traplot(res,c("alpha", "bPlot"))
+# posterior distributions
+denplot(res,c("alpha", "bPlot"))
+```
+
+#######################################################################################################
+
+
+
+############################# Centered categorical, size ##############################################
+
+
+    ## b0=alpha, bPlayer=bPlot, player=ct, bFluff=bSize, fluff=size
+# fit model center caegorical coefficients (subtract out the mean)
+```{r}  
+modelpepeSize <- 	'
+data {
+  for(i in 1:N) {
+    y[i] ~ dbern(p[i])
+    logit(p[i]) <- bPlot[ct[i]] + bSize * size[i]
+  }
+}
+
+  model{
+  fake <- 0
+  }
+  '
+
+# parameters for simulations 
+N = 400 # nb of observations
+TC = 4
+ct <- as.numeric(as.factor(rep(c("trSp","trFa","coSo","coDe"), each = 100))) # predictor, 4,3,2,1
+bPlot <- c(1.1,1,-1,-2) # index:  coDe = 1, coSo =2,  trFa =3, trSp=4
+bSize <- 1
+size <- rlnorm(N, log(5), 1)
+# parameters are treated as data for the simulation step
+data<-list(N=N,ct=ct, bPlot=bPlot, bSize = bSize, size = size)
+# Run JAGS but monitor the response variable instead of the parameters because we're checking if the model works 
+out <- run.jags(modelpepeSize, data = data,monitor=c("y"),sample=1, n.chains=1, summarise=FALSE)
+Simulated <- coda::as.mcmc(out)
+## spit out y for each data point
+dat <- as.vector(Simulated)
+
+# specify model in BUGS language
+modelpepeSize <- 	
+paste("	
+model {
+  for(i in 1:N) {
+    y[i] ~ dbern(p[i])
+    logit(p[i]) <- bPlot[ct[i]] + bSize * size[i]
+    }
+
+  # Priors
+  alpha ~ dunif(-5,5) ## because it is centered 
+    for(i in 1:4) {
+      Plottemp[i] ~ dnorm(0, 0.01)   ## find the mean across plotTypes
+    }
+  bPlot <- Plottemp - mean(Plottemp) ## resulting in change in centered Plot for each type
+  bSize ~ dunif(-5,5)
+}")
+writeLines(modelpepeSize,"centered_pepeSize.jags")
+
+# data, dat from simulation
+jags.data <- list(y = dat, ct = ct, N = length(dat), size = size)
+
+# initial values
+# inits <- function(){list(alpha = rbeta(1,1,1), beta = rnorm(1))}  
+
+# parameters monitored
+parameters <- c("bPlot", "bSize")
+
+# MCMC settings
+ni <- 10000
+nt <- 6
+nb <- 5000
+nc <- 2
+
+# call JAGS from R
+res <- jags(jags.data, inits = NULL, parameters, 
+            "centered_pepeSize.jags", n.chains = nc, n.thin = nt, 
+            n.iter = ni, n.burnin = nb,
+            working.directory = getwd()) 
+
+print(res, digits = 3)
+
+## Check convergence 
+# trace plots
+traplot(res,c( "bPlot","bSize"))
+# posterior distributions
+denplot(res,c( "bPlot","bSize"))
+```
+
+#######################################################################################################
+
+
+############################# Centered categorical, size, centered stage ##############################################
+
+
+    ## b0=alpha, bPlayer=bPlot, player=ct, bFluff=bSize, fluff=size
+# fit model center caegorical coefficients (subtract out the mean)
+```{r}  
+# parameters for simulations 
+N = 400 # nb of observations
+TC = 4
+ct <- as.factor(rep(c("trSp","trFa","coSo","coDe"), each = 100)) # predictor, 4,3,2,1
+alpha <- mean(c(1.1,1,-1,-2)) ## because centered, looking for difference from mean
+bPlot <- c(1.1,1,-1,-2) # index:  coDe = 1, coSo =2,  trFa =3, trSp=4
+bSize <- 1
+size <- rlnorm(N, log(5), 1)
+bStage <- 1.1 ## slightly more likely to survive as a reproductive than juvenile (long-lived perennial) ???
+## prob of rep depends on size, 0=veg, 1=rep
+alphaVegRep <- 0
+bVegRep <- 0.1 # slightly more likely to reproductive as get bigger
+stage <- unlist(lapply(inv.logit(alphaVegRep + bVegRep*size), function(x) rbinom(n=1, size=1, prob=x)))  
+# parameters are treated as data for the simulation step
+dat <- unlist(lapply(inv.logit(alpha + bPlot[ct] + size*bSize + stage*bStage), function(x) rbinom(n = 1, size = 1, prob = x)))
+
+data.frame(ct, size, stage)
+
+# specify model in BUGS language
+modelpepeSize <- 	
+paste("	
+model {
+  # Likelihood
+    for(i in 1:N) {
+      y[i] ~ dbern(p[i])
+      logit(p[i]) <- alpha + bPlot[ct[i]] + bSize * size[i] + bStage * stage[i]
+      
+      stage[i] ~ dbern(pS[i])
+      logit(pS[i]) <- alphaVegRep + bVegRep * size[i]
+    }
+    
+    # Stage, Hierarchical based on size, survival based on stage and size (or maybe confounded)
+    # for(i in 1:N)
+    # }
+
+  # Priors
+  alpha ~ dunif(-5,5) ## because it is centered 
+    for(i in 1:4) {
+      Plottemp[i] ~ dnorm(0, 0.01)   ## find the mean across plotTypes
+    }
+  bPlot <- Plottemp - mean(Plottemp) ## resulting in change in centered Plot for each type
+  bSize ~ dunif(-5,5)
+  bStage ~ dunif(-5,5)
+  alphaVegRep ~ dbern(0.5)
+  bVegRep ~ dunif(-5,5)
+  
+}")
+writeLines(modelpepeSize,"centered_pepeSize.jags")
+
+# data, dat from simulation
+jags.data <- list(y = dat, ct = ct, N = length(dat), size = size)
+
+# initial values
+# inits <- function(){list(alpha = rbeta(1,1,1), beta = rnorm(1))}  
+
+# parameters monitored
+parameters <- c("bPlot", "alpha", "bSize", "bStage", "alphaVegRep","bVegRep")
+
+# MCMC settings
+ni <- 10000
+nt <- 6
+nb <- 5000
+nc <- 2
+
+# call JAGS from R
+res <- jags(jags.data, inits = NULL, parameters, 
+            "centered_pepeSize.jags", n.chains = nc, n.thin = nt, 
+            n.iter = ni, n.burnin = nb,
+            working.directory = getwd()) 
+
+print(res, digits = 3)
+
+## Check convergence 
+# trace plots
+traplot(res,c("alpha", "bPlot","bSize", "bStage", "alphaVegRep","bVegRep"))
+# posterior distributions
+denplot(res,c("alpha", "bPlot","bSize", "bStage", "alphaVegRep","bVegRep"))
+```
+
+#######################################################################################################
+
+
+############################# Centered categorical, size, centered stage ##############################################
+
+
+    ## b0=alpha, bPlayer=bPlot, player=ct, bFluff=bSize, fluff=size
+# fit model center caegorical coefficients (subtract out the mean)
+```{r}  
+# parameters for simulations 
+N = 400 # nb of observations
+TC = 4
+ct <- as.factor(rep(c("trSp","trFa","coSo","coDe"), each = 100)) # predictor, 4,3,2,1
+alpha <- mean(c(1.1,1,-1,-2)) ## because centered, looking for difference from mean
+bPlot <- c(1.1,1,-1,-2) # index:  coDe = 1, coSo =2,  trFa =3, trSp=4
+bSize <- 1
+size <- rlnorm(N, log(5), 1)
+bStage <- 1.1 ## slightly more likely to survive as a reproductive than juvenile (long-lived perennial) ???
+## prob of rep depends on size, 0=veg, 1=rep
+alphaVegRep <- 0
+bVegRep <- 0.1 # slightly more likely to reproductive as get bigger
+stage <- unlist(lapply(inv.logit(alphaVegRep + bVegRep*size), function(x) rbinom(n=1, size=1, prob=x)))  
+# parameters are treated as data for the simulation step
+dat <- unlist(lapply(inv.logit(alpha + bPlot[ct] + size*bSize + stage*bStage), function(x) rbinom(n = 1, size = 1, prob = x)))
+
+data.frame(ct, size, stage)
+
+# specify model in BUGS language
+modelpepeSize <- 	
+paste("	
+model {
+  # Likelihood
+    for(i in 1:N) {
+      y[i] ~ dbern(p[i])
+      logit(p[i]) <- alpha + bPlot[ct[i]] + bSize * size[i] + bStage * stage[i]
+    }
+    
+    # Stage, Hierarchical based on size, survival based on stage and size (or maybe confounded)
+    # for(i in 1:N)
+    # }
+
+  # Priors
+  alpha ~ dunif(-5,5) ## because it is centered 
+    for(i in 1:4) {
+      Plottemp[i] ~ dnorm(0, 0.01)   ## find the mean across plotTypes
+    }
+  bPlot <- Plottemp - mean(Plottemp) ## resulting in change in centered Plot for each type
+  bSize ~ dunif(-5,5)
+  bStage ~ dunif(-5,5)
+  
+}")
+writeLines(modelpepeSize,"centered_pepeSize.jags")
+
+# data, dat from simulation
+jags.data <- list(y = dat, ct = ct, N = length(dat), size = size, stage = stage)
+
+# initial values
+# inits <- function(){list(alpha = rbeta(1,1,1), beta = rnorm(1))}  
+
+# parameters monitored
+parameters <- c("bPlot", "alpha", "bSize", "bStage", "alphaVegRep","bVegRep")
+
+# MCMC settings
+ni <- 10000
+nt <- 6
+nb <- 5000
+nc <- 2
+
+# call JAGS from R
+res <- jags(jags.data, inits = NULL, parameters, 
+            "centered_pepeSize.jags", n.chains = nc, n.thin = nt, 
+            n.iter = ni, n.burnin = nb,
+            working.directory = getwd()) 
+
+print(res, digits = 3)
+
+## Check convergence 
+# trace plots
+traplot(res,c("alpha", "bPlot","bSize", "bStage", "alphaVegRep","bVegRep"))
+# posterior distributions
+denplot(res,c("alpha", "bPlot","bSize", "bStage", "alphaVegRep","bVegRep"))
+```
+
+#######################################################################################################
+
+Old try, trying again  
+################################################################################################################################################################################################################  
+  simple model of survival (grouping by treatment and control)
+  Penstemon penlandii model and data to test
+  
+```{r,"Old wrong"}
+modelpepe <- '	
+data {
+  for(i in 1:N) {
+    y[i] ~ dbern(p[i])
+    logit(p[i]) <- alpha + bPlot[ct[i]] ## one for each plot
+  }
+}
+
+  model{
+  fake <- 0
+  }
+  '
+
+
+# parameters for simulations 
+N = 400 # nb of observations
+TC = 4
+ct <- as.factor(rep(c("trSp","trFa","coSo","coDe"), each = 100)) # predictor, 4,3,2,1
+alpha <- mean(c(1.1,1,-1,-2)) ## because centered, looking for difference from mean
+bPlot <- c(1.1,1,-1,-2) # index:  coDe = 1, coSo =2,  trFa =3, trSp=4
+# parameters are treated as data for the simulation step
+# dat <- unlist(lapply(inv.logit(alpha + bPlot[ct]), function(x) rbinom(n = 1, size = 1, prob = x)))
+
+## Or simulated with model
+data<-list(N=N,ct=ct, alpha=alpha,bPlot=bPlot)
+
+# Run JAGS but monitor the response variable instead of the parameters because we're checking if the model works 
+out <- run.jags(modelpepe, data = data,monitor=c("y"),sample=1, n.chains=1, summarise=FALSE)
+
+Simulated <- coda::as.mcmc(out)
+## spit out y for each data point
+dat <- as.vector(Simulated)
+
+```
+
+ <https://mmeredith.net/blog/2017/Categories_in_JAGS.htm>     
+# fit model center caegorical coefficients (subtract out the mean)
+```{r}
+# specify model in BUGS language
+modelpepe <- 	
+paste("	
+model {
+  for(i in 1:N) {
+    y[i] ~ dbern(p[i])
+    logit(p[i]) <- alpha + bPlot[ct[i]]
+    }
+
+  # Priors
+  alpha ~ dunif(-5,5) ## because it is centered 
+    for(i in 1:4) {
+      Plottemp[i] ~ dnorm(0, 0.1)   ## find the mean across plotTypes
+    }
+  bPlot <- Plottemp - mean(Plottemp) ## resulting in change in centered Plot for each type
+}")
+writeLines(modelpepe,"centered_pepe.jags")
+
+# data, dat from simulation
+jags.data <- list(y = dat, ct = ct, N = length(dat))
+
+# initial values
+inits <- function(){list(alpha = rbeta(1,1,1), beta = rnorm(1))}  
+
+# parameters monitored
+parameters <- c("bPlot", "alpha")
+
+# MCMC settings
+ni <- 10000
+nt <- 6
+nb <- 5000
+nc <- 2
+
+# call JAGS from R
+res <- jags(jags.data, inits = NULL, parameters, 
+            "centered_pepe.jags", n.chains = nc, n.thin = nt, 
+            n.iter = ni, n.burnin = nb,
+            working.directory = getwd()) 
+
+print(res, digits = 3)
+
+## Check convergence 
+# trace plots
+traplot(res,c("alpha", "bPlot"))
+# posterior distributions
+denplot(res,c("alpha", "bPlot"))
+```
+
+#######################################################################################################
