@@ -5,6 +5,141 @@ date: "2023-02-11"
 output: html_document
 ---
 
+Fay et al 2021 example Mixture of Bernoulli- and Poisson-distributed demographic parameters    
+```{r}
+### Simulation of the individual life-histories
+library(mvtnorm)
+
+ilogit <- function(x) 1/(1+exp(-x))
+logit <- function(x) log(x/(1-x))
+# Parameters of the simulated data
+n.released <- 25 # number of individuals marked and released per year
+n.year <- 20 # number of years
+n.ind <- n.released * n.year # Total number of individuals in the dataset
+mu.phi <- 0.5 # Survival probability
+mu.psi <- 0.7 # Breeding success probability
+mu.p <- 0.5 # Detection probability
+sigma.alpha.phi <- 0.2 # Among-individual variation in survival
+sigma.alpha.psi <- 0.2 # Among-individual variation in reproductive success
+
+cor.alpha <- 0.6 # Correlation between survival and breeding individual variation
+sigma.eps.phi <- 0.5 # Survival temporal variation
+sigma.eps.psi <- 0.5 # Breeding success temporal variation
+
+cor.eps <- 0 # Correlation between survival and breeding temporal variation
+gamma.phi <- - logit(0.4) # State effect for survival
+gamma.psi <- logit(0.7)-logit(0.6) # State effect for reproductive success
+n.loop <- 1
+# Objects to record the results
+RESULT <- array(NA, dim = c(11,2,n.loop))
+rownames(RESULT) = c('mean.phi', 'mean.psi', 'mean.psi.re', 'mean.p', 'cor.alpha', 'sigma.alpha.phi', 'sigma.alpha.psi',
+                     'sigma.eps.phi', 'sigma.eps.psi', 'gamma.phi', 'gamma.psi')
+
+## fill this in twise, make a couple sets I guess
+for (k in 1:n.loop){
+  ## Simulation of individual variation
+  alpha <- array(NA, dim = c(n.ind,2))
+  # Variance covariance matrix
+  varcov.alpha <- array(NA, dim = c(2,2))
+  varcov.alpha[1,1] <- sigma.alpha.phi^2
+  varcov.alpha[2,2] <- sigma.alpha.psi^2
+  varcov.alpha[1,2] <- varcov.alpha[2,1] <- cor.alpha * sigma.alpha.phi * sigma.alpha.psi ## diagonal, 
+  alpha <- rmvnorm(n.ind, c(0,0), varcov.alpha)
+  ## Simulation of temporal variation
+  epsilon <- array(NA, dim = c(n.year,2))
+  # Variance covariance matrix
+  varcov.eps <- array(NA, dim = c(2,2))
+  varcov.eps[1,1] <- sigma.eps.phi^2
+  varcov.eps[2,2] <- sigma.eps.psi^2
+  varcov.eps[1,2] <- varcov.eps[2,1] <- cor.eps * sigma.eps.phi * sigma.eps.psi
+  epsilon <- rmvnorm(n.year, c(0,0), varcov.eps)
+  ## Simulation of the breeding process: Successful (1), Failed (2)
+  mat.breed <- array(NA, dim = c(n.released*n.year, n.year)) # Breeding success matrix
+  # Year and individual specific breeding success probabilities
+  breed.prob <- array(NA, dim = c(n.ind, n.year))
+  
+  # a new column for each year, row for each individual with another 25 added each year
+  for (t in 1:n.year){
+    for (i in 1:(t*n.released)){
+      breed.prob[i,t] <- logit(mu.psi) + alpha[i,2] + epsilon[t,2]
+    }
+  }
+  
+  # first year for each 25 per year
+  for (t in 1:n.year){
+    for (i in (1+(t-1)*n.released):(t*n.released)){
+      mat.breed[i,t] <- rbinom(1,1,ilogit(breed.prob[i,t] - gamma.psi)) + 1
+    }
+  }
+  
+  # following years
+  for (t in 2:n.year){
+    for (i in 1:((t-1)*n.released)){
+      state <- ifelse(mat.breed[i,t-1]==2,0,1)
+      mat.breed[i,t] <- rbinom(1,1,ilogit(breed.prob[i,t] - state * gamma.psi)) + 1
+    }
+  }
+
+  ## Simulation of the survival process
+  mat.s <- array(NA, dim = c(n.ind, n.year)) # Survival matrix
+  # Year and individual specific survival probabilities
+  s.prob <- array(NA, dim = c(n.ind, n.year))
+  for (t in 2:n.year){
+    for (i in 1:((t-1)*n.released)){
+      s.prob[i,t] <- logit(mu.phi) + alpha[i,1] + epsilon[t,1]
+    }
+  }
+  
+  # Alive at the first capture
+  for (t in 1:n.year){
+    mat.s[(1+(t-1)*n.released):(t*n.released),t] <- 1
+    }
+  # After the first capture
+  for (t in 2:n.year){
+    for (i in 1:((t-1)*n.released)){
+      state <- ifelse(mat.breed[i,t-1]==2,0,1)
+      mat.s[i,t] <- rbinom(1,1,ilogit(s.prob[i,t] - state * gamma.phi)*mat.s[i,t-1])
+    }
+  }
+  
+  ## Simulation of the observation process
+  mat.obs <- array(1, dim = c(n.released*n.year, n.year)) # Observation matrix
+  # After the first capture
+  for (t in 2:n.year){
+    for (i in 1:((t-1)*n.released)){
+      mat.obs[i,t] <- rbinom(1,1,mu.p)
+    }
+  }
+  
+  ## Final dataset
+  data <- mat.s * mat.breed * mat.obs
+  # At which occasion the first capture occur
+  get.first <- function(x) min(which(x!=0))
+  first <- apply(data, 1, get.first)
+  # The last capture occasion
+  last <- rep(n.year,n.ind)
+  # Build datasets to feed jags
+
+  SURVIVAL <- mat.s * mat.obs
+  SURVIVAL[data==0] <- NA
+  BREED <- data
+  BREED[data==0] <- NA ; BREED[data==1] <- 0 ; BREED[data==2] <- 1
+  DETECTED <- mat.obs * mat.s
+  
+  # Initial values of latent variables to run the model
+  mat.surv <- array(NA, dim = c(n.ind,n.year))
+  breed <- array(NA, dim = c(n.ind,n.year))
+  for (i in 1:n.ind){
+    mat.surv[i, first[i]:last[i]] <- 1
+    breed[i, first[i]:last[i]] <- rbinom(length(first[i]:last[i]), size = 1, prob = 0.5)
+    }
+  init.surv <- mat.surv * ifelse(data == 0, 1, NA)
+  init.breed <- breed * ifelse(is.na(BREED), 1, NA)
+}
+  
+```
+
+
 
 McElreath mom-daughter example 
 ```{r}
