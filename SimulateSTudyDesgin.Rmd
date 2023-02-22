@@ -28,92 +28,10 @@ normal for Beta_transplanttime impact of spring vs. fall
 lognormal for Beta_size impact of size  
 
 Put together for MPM and estimate the lambda (or an IPM) 
-#########################################################################################################  
-  simple model of survival (no random effects, no grouping)
-  Penstemon penlandii model and data to test
-  
-```{r,"PePe"}
-pepestring <- '
-  data{
-    # Likelihood:
-        for(i in 1:N){
-          y[i] ~ dbern(theta[i]) ## theta: The probability of survival
-          theta[i] <- alpha + beta * x[i]  
-        }
-    }
-  model{
-  fake <- 0
-  }
-  '
-# parameters for simulations 
-N = 400 # nb of observations
-x <- as.numeric(as.factor(rep(c("trSp","trFa","coSo","coDe"), each = 100))) # predictor
-alpha <- 0.4
-beta = 0.1 # offset of mean survival
-# theta <- .5 # probability of survival (variance is theta(1-theta))
-# parameters are treated as data for the simulation step
-data<-list(N=N,x=x,alpha=alpha,beta=beta)
 
-# Run JAGS but monitor the response variable instead of the parameters because we're checking if the model works 
-out <- run.jags(pepestring, data = data,monitor=c("y"),sample=1, n.chains=1, summarise=FALSE)
-
-Simulated <- coda::as.mcmc(out)
-## spit out y for each data point
-dat <- as.vector(Simulated)
-```
-# Now fit the model used to simulate the data that was generated
-```{r}
-# specify model in BUGS language
-modelpepe <- 	
-paste("	
-model {
-    # Likelihood:
-        for(i in 1:N){
-          y[i] ~ dbern(theta[i]) ## theta: The probability of survival
-          theta[i] <- alpha + beta * x[i]  
-        }
-    # Priors:
-    alpha ~ dbeta(1, 1) # intercept ## uniform, uninformative prior
-    beta ~ dnorm(0, 0.01) # slope
-  }
-")
-writeLines(modelpepe,"lin_reg_pepe.jags") ## written to  "C:/Users/deprengm/OneDrive - Denver Botanic Gardens/Documents"
-# setwd("C:/Users/deprengm/OneDrive - Denver Botanic Gardens/Documents")
-
-# data, dat from simulation
-jags.data <- list(y = dat, N = length(dat), x = x)
-
-# initial values
-inits <- function(){list(alpha = rbeta(1,1,1), beta = rnorm(1))}  
-
-# parameters monitored
-parameters <- c("alpha", "beta")
-
-# MCMC settings
-ni <- 10000
-nt <- 6
-nb <- 5000
-nc <- 2
-
-# call JAGS from R
-res <- jags(jags.data, inits = NULL, 
-            # inits = inits, 
-            parameters, "lin_reg_pepe.jags", n.chains = nc, n.thin = nt, 
-            n.iter = ni, n.burnin = nb,
-            working.directory = getwd()) 
-
-print(res, digits = 3)
-
-## Check convergence 
-# trace plots
-traplot(res,c("alpha", "beta"))
-# posterior distributions
-denplot(res,c("alpha", "beta"))
-```
-
-
-
-
+$\epsilon$ 
+$\phi$ survival probability, among-individual variation
+$\psi$ trident breeding success probability, among-individual variation
 
 ################################################################################################################################################################################################################  
   simple model of survival (grouping by treatment and control)
@@ -123,8 +41,14 @@ denplot(res,c("alpha", "beta"))
 modelpepe <- '	
 data {
   for(i in 1:N) {
-    y[i] ~ dbern(p[i])
-    logit(p[i]) <- alpha[ ct[i] ]  ## one for each plot
+  
+    # Likelihood
+    
+    ### Initial conditions, survival depends on treatment and control
+    y[i] ~ dbern(p_surv[i])
+    logit(p_surv[i]) <- alpha[ ct[i] ] 
+    
+    brep[i] ~ dbern(p_rep[i])
   }
 }
 
@@ -135,12 +59,40 @@ data {
 
 
 # parameters for simulations 
-N = 400 # nb of observations
-TC = 4
+N <- 400 # nb of observations
+nPlots <- 4
 ct <- as.factor(rep(c("trSp","trFa","coSo","coDe"), each = 100)) # predictor, 4,3,2,1
-meanAlpha <- mean(c(1.1,1,-1,-2)) ## because centered, looking for difference from mean
-alpha <- c(1.1,1,-1,-2) # index:  coDe = 1, coSo =2,  trFa =3, trSp=4
-inv.logit(alpha) ## 0.7502601 0.7310586 0.2689414 0.1192029 are the probabilities
+nYears <- 3
+as <- c(1.1,1,-1,-2) ## because centered, looking for difference from mean
+alpha <- as - mean(as) # index:  coDe = 1, coSo =2,  trFa =3, trSp=4 
+boot::inv.logit(as) ## 0.7502601 0.7310586 0.2689414 0.1192029 are the probabilities
+boot::inv.logit(alpha) 
+
+bsize <- 1.1
+alphas <- inv.logit(rep(as, each = 100))
+size <- unlist(lapply(alphas, function(x) rlnorm(1, log(x), log(5))))
+
+sigma.alpha.phi <- 0.2 # Among-individual variation in survival
+sigma.alpha.psi <- 0.2 # Among-individual variation in reproductive success
+cor.alpha <- 0.6 # Correlation between survival and reproduction individual variation
+
+sigma.eps.phi <- 0.5 # Survival temporal variation
+sigma.eps.psi <- 0.5 # Breeding success temporal variation
+cor.eps <- 0 # Correlation between survival and breeding temporal variation
+
+## Conditional on survival (from year t-1), an individual might be reproductive in year t 
+## Fay et al 2021, temporal variation, state-dependent variation, probablity that event for individual i at time t depends on state of that individual at time t-1
+gamma.phi <- - logit(0.4) # State effect for survival
+gamma.psi <- logit(0.7)-logit(0.6) # State effect for reproductive success
+
+# Variance covariance matrix
+varcov.alpha <- array(NA, dim = c(2,2))
+varcov.alpha[1,1] <- sigma.alpha.phi^2
+varcov.alpha[2,2] <- sigma.alpha.psi^2
+varcov.alpha[1,2] <- varcov.alpha[2,1] <- cor.alpha * sigma.alpha.phi * sigma.alpha.psi
+alpha1 <- rmvnorm(N, c(0,0), varcov.alpha)
+
+
 # parameters are treated as data for the simulation step
 data<-list(N=N,ct=ct, alpha=alpha)
 
