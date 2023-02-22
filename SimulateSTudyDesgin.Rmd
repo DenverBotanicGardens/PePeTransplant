@@ -67,32 +67,37 @@ nPlots <- 4
 ct <- as.factor(rep(c("trSp","trFa","coSo","coDe"), each = 100)) # predictor, 4,3,2,1
 nYears <- 3
 as <- c(1.1,1,-1,-2) ## because centered, looking for difference from mean
-alpha <- as - mean(as) # index:  coDe = 1, coSo =2,  trFa =3, trSp=4 
+alpha <- as - mean(as) # index:  coDe = 1, coSo =2,  trFa =3, trSp=4
+ar <- c(1.1,1.2,-2,-2.1)
+alpha.r <- ar - mean(ar)
 boot::inv.logit(as) ## 0.7502601 0.7310586 0.2689414 0.1192029 are the probabilities
 boot::inv.logit(alpha) 
 
 bsize <- 0.1 ## increasing survival with size
-alphas <- inv.logit(rep(as, each = 100))
+# alphas <- inv.logit(rep(as, each = 100))
 size <- runif(N, 1, 15) ## plants will be at least 1cm once germinated and up to about 15cm at largest
 
-sigma.alpha.phi <- 0.2 # Among-individual variation in survival
-sigma.alpha.psi <- 0.2 # Among-individual variation in reproductive success
+mu.surv <- alpha
+mu.rep <- alpha.r
+
+sigma.alpha.surv <- 0.2 # Among-individual variation in survival
+sigma.alpha.rep <- 0.2 # Among-individual variation in reproductive success
 cor.alpha <- 0.6 # Correlation between survival and reproduction individual variation
 
-sigma.eps.phi <- 0.5 # Survival temporal variation
-sigma.eps.psi <- 0.5 # Breeding success temporal variation
+sigma.eps.surv <- 0.5 # Survival temporal variation
+sigma.eps.rep <- 0.5 # Breeding success temporal variation
 cor.eps <- 0 # Correlation between survival and breeding temporal variation
 
 ## Conditional on survival (from year t-1), an individual might be reproductive in year t 
 ## Fay et al 2021, temporal variation, state-dependent variation, probablity that event for individual i at time t depends on state of that individual at time t-1
-gamma.phi <- - logit(0.4) # State effect for survival
-gamma.psi <- logit(0.7)-logit(0.6) # State effect for reproductive success
+gamma.surv <- - logit(0.4) # State effect for survival
+gamma.rep <- logit(0.7)-logit(0.6) # State effect for reproductive success
 
-# Variance covariance matrix
-varcov.alpha <- array(NA, dim = c(2,2))
-varcov.alpha[1,1] <- sigma.alpha.phi^2
-varcov.alpha[2,2] <- sigma.alpha.psi^2
-varcov.alpha[1,2] <- varcov.alpha[2,1] <- cor.alpha * sigma.alpha.phi * sigma.alpha.psi
+# Variance covariance matrix, separate for each plot, but shouldn't change among control/treatment 
+varcov.alpha <- array(NA, dim = c(2,2,nPlots))
+varcov.alpha[1,1,] <- sigma.alpha.surv^2
+varcov.alpha[2,2,] <- sigma.alpha.rep^2
+varcov.alpha[1,2,] <- varcov.alpha[2,1,] <- cor.alpha * sigma.alpha.phi * sigma.alpha.psi
 alpha1 <- rmvnorm(N, c(0,0), varcov.alpha)
 
 
