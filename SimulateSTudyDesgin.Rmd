@@ -14,6 +14,9 @@ library(R2jags)
 library(runjags)
 library(mcmcplots)
 library(boot)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
 ```
 
 
@@ -38,17 +41,17 @@ $\psi$ trident breeding success probability, among-individual variation
   Penstemon penlandii model and data to test
   
 ```{r,"PePeTC"}
-modelpepe <- '	
+modelpepeSimulation <- '	
 data {
   for(i in 1:N) {
   
     # Likelihood
-    
     ### Initial conditions, survival depends on treatment and control
-    y[i] ~ dbern(p_surv[i])
-    logit(p_surv[i]) <- alpha[ ct[i] ] 
+    y_surv[i] ~ dbern(p_surv[i])
+    logit(p_surv[i]) <- alpha[ ct[i] ] + bsize * size[i]
     
-    brep[i] ~ dbern(p_rep[i])
+    y_rep[i] ~ dbern(p_rep[i] * y_surv[i]) ## reproduction dependent on survival
+    logit(p_rep[i]) <- alpha[ ct[i] ] + bsize * size[i]
   }
 }
 
@@ -59,7 +62,7 @@ data {
 
 
 # parameters for simulations 
-N <- 400 # nb of observations
+N <- 400 # nb of observations, but would need to be larger with some that are zero in the first or first and second year to account for recruitment
 nPlots <- 4
 ct <- as.factor(rep(c("trSp","trFa","coSo","coDe"), each = 100)) # predictor, 4,3,2,1
 nYears <- 3
@@ -68,9 +71,9 @@ alpha <- as - mean(as) # index:  coDe = 1, coSo =2,  trFa =3, trSp=4
 boot::inv.logit(as) ## 0.7502601 0.7310586 0.2689414 0.1192029 are the probabilities
 boot::inv.logit(alpha) 
 
-bsize <- 1.1
+bsize <- 0.1 ## increasing survival with size
 alphas <- inv.logit(rep(as, each = 100))
-size <- unlist(lapply(alphas, function(x) rlnorm(1, log(x), log(5))))
+size <- runif(N, 1, 15) ## plants will be at least 1cm once germinated and up to about 15cm at largest
 
 sigma.alpha.phi <- 0.2 # Among-individual variation in survival
 sigma.alpha.psi <- 0.2 # Among-individual variation in reproductive success
@@ -94,14 +97,26 @@ alpha1 <- rmvnorm(N, c(0,0), varcov.alpha)
 
 
 # parameters are treated as data for the simulation step
-data<-list(N=N,ct=ct, alpha=alpha)
+data<-list(N=N,ct=ct, alpha=alpha, bsize = bsize, size = size)
 
 # Run JAGS but monitor the response variable instead of the parameters because we're checking if the model works 
-out <- run.jags(modelpepe, data = data,monitor=c("y"),sample=1, n.chains=1, summarise=FALSE)
+out <- run.jags(modelpepeSimulation, data = data,monitor=c("y_surv","y_rep"),sample=2, n.chains=1, summarise=FALSE)
 
 Simulated <- coda::as.mcmc(out)
+# dataSim <- Simulated %>%
+#   mutate(y_surv1 = )
+y_surv1 <- Simulated[1,1:400]
+y_surv2 <- Simulated[2,1:400]
+y_rep1 <- Simulated[1,401:800]
+y_rep2 <- Simulated[2,401:800]
 ## spit out y for each data point
 dat <- as.vector(Simulated)
+
+data.frame(y_surv1, y_surv2, y_rep1, y_rep2, size, ct) %>%
+  ggplot(   aes(size, y_surv1, color = ct))+
+    geom_smooth(method = "glm", method.args = list(family = "binomial"),se = TRUE, alpha = 0.5)+
+    theme_bw()
+    
 
 ```
 
