@@ -9,6 +9,12 @@ Fay et al 2021 example Mixture of Bernoulli- and Poisson-distributed demographic
 ```{r}
 ### Simulation of the individual life-histories
 library(mvtnorm)
+library(R2jags)
+library(jagsUI)
+library(runjags)
+library(mcmcplots)
+library(boot)
+
 
 ilogit <- function(x) 1/(1+exp(-x))
 logit <- function(x) log(x/(1-x))
@@ -35,7 +41,7 @@ RESULT <- array(NA, dim = c(11,2,n.loop))
 rownames(RESULT) = c('mean.phi', 'mean.psi', 'mean.psi.re', 'mean.p', 'cor.alpha', 'sigma.alpha.phi', 'sigma.alpha.psi',
                      'sigma.eps.phi', 'sigma.eps.psi', 'gamma.phi', 'gamma.psi')
 
-## fill this in twise, make a couple sets I guess
+## fill this in twice, make a couple sets I guess
 for (k in 1:n.loop){
   ## Simulation of individual variation
   alpha <- array(NA, dim = c(n.ind,2))
@@ -135,8 +141,132 @@ for (k in 1:n.loop){
     }
   init.surv <- mat.surv * ifelse(data == 0, 1, NA)
   init.breed <- breed * ifelse(is.na(BREED), 1, NA)
-}
+
+### JAGS model
+cat(file = "model01.jags", "
+  model {
+  ### DATA
+  # SURVIVAL[i, t] with NA, 1 and 0
+  # BREED[i, t] with NA, 1 and 0
+  # DETECTED[i, t] with 0 and 1
+  # Pointers at the individual level
+  # FIRST[i]:LAST[i]
+  # n.year
+  # n.ind
+  ### LIKELIHOOD ###
+  for(i in 1:n.ind) {
+  ## Initial conditions
+  SURVIVAL[i, FIRST[i]] ~ dbern(1.0)
+  BREED[i, FIRST[i]] ~ dbern(psi[i, FIRST[i]] * SURVIVAL[i, FIRST[i]])
+  psi[i, FIRST[i]] <- ilogit(mu.psi.re + alpha[i, 2] + epsilon[FIRST[i], 2])
+  # note that you're necessarily detected on first occasion
+  DETECTED[i, FIRST[i]] ~ dbern(1.0)
+  ## Rest of the life histories
+  for(t in (FIRST[i] + 1):LAST[i]) {
+  # survival
+  SURVIVAL[i, t] ~ dbern(surv[i, t] * SURVIVAL[i, t-1])
+  surv[i, t] <- ilogit(mu.phi + gamma[1] * BREED[i, t-1] + alpha[i, 1] + epsilon[t, 1])
+  # breed
+  BREED[i, t] ~ dbern(psi[i, t] * SURVIVAL[i, t])
+  psi[i, t] <- ilogit(mu.psi + gamma[2] * BREED[i, t-1] + alpha[i, 2] + epsilon[t, 2])
+  # detection: you can only be detected if you're currently alive
+  # distinguish between states: breeding and non breeding
+  DETECTED[i, t] ~ dbern(ilogit(mu.p) * SURVIVAL[i, t])
+  }
+  }
+  ### PRIORS ###
+  # survival
+  mu.phi ~ dnorm(0.0, 0.4444444)
+  # breeding
+  mu.psi ~ dnorm(0.0, 0.4444444)
+  mu.psi.re ~ dnorm(0.0, 0.4444444)
+  # detection
+  mu.p ~ dnorm(0.0, 0.4444444)
+  # state dependent effects
+  prec_gamma <- pow(log(2)/2, -2);
+  for (j in 1:2) {
+    gamma[j] ~ dnorm(0.0, prec_gamma);
+  }
+  # Individual effect
+  # Cholesky decomposition with parameter expansion
+  for (j in 1:2) {
+    A[j, j] ~ dnorm(0.0, 0.4444444)T(0.0,)
+    DeltaA[j, j] <- 1/tauA[j] ; tauA[j] ~ dgamma(1.5, 1.5);
+    LA[j, j] <- 1.0;
+  }
+  LA[1, 2] <- 0.0; A[1, 2] <- 0.0; DeltaA[1, 2] <- 0.0;
+  LA[2, 1] ~ dnorm(0.0, 4.0); A[2, 1] <- 0.0; DeltaA[2, 1] <- 0.0;
+  # covariance matrix
+  Omega <- A %*% LA %*% DeltaA %*% t(LA) %*% A;
   
+  for(i in 1:n.ind){
+    alpha[i, 1] <- A[1, 1] * (LA[1, 1] * xi_a[i, 1]);
+    alpha[i, 2] <- A[2, 2] * (LA[2, 1] * xi_a[i, 1] + LA[2, 2] * xi_a[i, 2]);
+    for(j in 1:2){
+        xi_a[i, j] ~ dnorm(0.0, tauA[j]);
+      } 
+  }
+  sigma.alpha.phi <- sqrt(Omega[1, 1])
+  sigma.alpha.psi <- sqrt(Omega[2, 2])
+  cor.alpha <- Omega[1, 2] / sqrt(Omega[1, 1] * Omega[2, 2])
+  # Environmental effect
+    for (j in 1:2) {
+      E[j, j] ~ dnorm(0.0, 0.4444444)T(0.0,)
+      DeltaE[j, j] <- 1/tauE[j] ; tauE[j] ~ dgamma(1.5, 1.5);
+      LE[j, j] <- 1.0;
+    }
+  LE[1, 2] <- 0.0; E[1, 2] <- 0.0; DeltaE[1, 2] <- 0.0;
+  LE[2, 1] ~ dnorm(0.0, 4.0); E[2, 1] <- 0.0; DeltaE[2, 1] <- 0.0;
+  
+  # covariance matrix
+  Lambda <- E %*% LE %*% DeltaE %*% t(LE) %*% E;
+  
+  ## for a new for each year and each xi_e
+  for(i in 1:n.year){
+    epsilon[i, 1] <- E[1, 1] * (LE[1, 1] * xi_e[i, 1]);
+    epsilon[i, 2] <- E[2, 2] * (LE[2, 1] * xi_e[i, 1] + LE[2, 2] * xi_e[i, 2]);
+      for(j in 1:2){
+        xi_e[i, j] ~ dnorm(0.0, tauE[j]);
+      }
+  }
+  sigma.eps.phi <- sqrt(Lambda[1, 1])
+  sigma.eps.psi <- sqrt(Lambda[2, 2])
+  cor.eps <- Lambda[1, 2] / sqrt(Lambda[1, 1] * Lambda[2, 2])
+  # Derived quantity
+  mean.phi <- ilogit(mu.phi)
+  mean.psi.re <- ilogit(mu.psi.re)
+  mean.psi <- ilogit(mu.psi)
+  mean.p <- ilogit(mu.p)
+}
+")
+  
+# Bundle data
+jags.data <- list(SURVIVAL = SURVIVAL, BREED = BREED, FIRST = first, LAST = last, n.ind = n.ind, n.year = n.year)
+inits <- function(){list(SURVIVAL = init.surv, BREED = init.breed)}
+# Parameters monitored
+parameters <- c("mean.phi", "mean.psi", "mean.psi.re", "mean.p", "cor.alpha", "sigma.alpha.phi", "sigma.alpha.psi",
+                "sigma.eps.phi", "sigma.eps.psi", "gamma")
+# MCMC settings
+ni <- 8000
+nt <- 4
+nb <- 2000
+nc <- 3
+# Call JAGS from R (BRT 1 min)
+out1 <- jags(jags.data, inits, parameters, "model01.jags", n.chains = nc, n.thin = nt, n.iter = ni, 
+             n.burnin = nb, parallel = TRUE)
+RESULT[1:11,1,k] <- c(out1$mean$mean.phi, out1$mean$mean.psi, out1$mean$mean.psi.re, out1$mean$mean.p, 
+                      out1$mean$cor.alpha, out1$mean$sigma.alpha.phi, out1$mean$sigma.alpha.psi, 
+                      out1$mean$sigma.eps.phi, out1$mean$sigma.eps.psi, out1$mean$gamma[1], out1$mean$gamma[2])
+RESULT[1:11,2,k] <- c(out1$Rhat$mean.phi, out1$Rhat$mean.psi, out1$Rhat$mean.psi.re, out1$Rhat$mean.p, 
+                      out1$Rhat$cor.alpha, out1$Rhat$sigma.alpha.phi, out1$Rhat$sigma.alpha.psi, 
+                      out1$Rhat$sigma.eps.phi, out1$Rhat$sigma.eps.psi, out1$Rhat$gamma[1], out1$Rhat$gamma[2])
+}
+
+print(out1, digits = 3)
+# trace plots
+traceplot(out1,c("mean.phi", "mean.psi","mean.psi.re","mean.p","cor.alpha"))
+densityplot(out1)
+
 ```
 
 
