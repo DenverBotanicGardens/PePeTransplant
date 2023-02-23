@@ -44,15 +44,23 @@ $\psi$ trident breeding success probability, among-individual variation
 modelpepeSimulation <- '	
 data {
   for(i in 1:N) {
-  
     # Likelihood
-    ### Initial conditions, survival depends on treatment and control
-    y_surv[i] ~ dbern(p_surv[i])
-    logit(p_surv[i]) <- alpha[ ct[i] ] + bsize * size[i]
+    # Initial state
+    y_surv[i,1] ~ dbern(1) ## The first year all are alive to transplant or tag
+    y_rep[i,1] ~ dbern(p_rep[i,1] * y_surv[i,1])  ## reproduction depends on survival 
+    logit(p_rep[i,1]) <- alpha[ ct[i] ] + bsize * size[i] + alpha1[i, 2] + epsilon[1,2]
     
-    y_rep[i] ~ dbern(p_rep[i] * y_surv[i]) ## reproduction dependent on survival
-    logit(p_rep[i]) <- alpha[ ct[i] ] + bsize * size[i]
-  }
+    # Three years of monitoring
+    for(t in 2:nYears){
+      y_surv[i,t] ~ dbern(p_surv[i,t])
+      logit(p_surv[i,t]) <- alpha[ct[i]] + bsize * size[i] + gamma[1] * y_rep[i, t-1] + 
+                            alpha1[i,1,ct[i]] + epsilon[t,1,ct[i]] 
+      
+      y_rep[i,t] ~ dbern(p_rep[i,t] * y_surv[i,t]) ## reproduction dependent on survival
+      logit(p_rep[i,t]) <- alpha[ ct[i] ] + bsize * size[i] + gamma[2] * y_rep[i, t-1] +
+                         alpha1[i,2] + epsilon[t,2,ct[i]]
+    } ## Year loop
+  } ## Individuals loop
 }
 
   model{
@@ -61,11 +69,12 @@ data {
   '
 
 
+
 # parameters for simulations 
 N <- 400 # nb of observations, but would need to be larger with some that are zero in the first or first and second year to account for recruitment
 nPlots <- 4
 ct <- as.factor(rep(c("trSp","trFa","coSo","coDe"), each = 100)) # predictor, 4,3,2,1
-nYears <- 3
+nYears <- 4
 as <- c(1.1,1,-1,-2) ## because centered, looking for difference from mean
 alpha <- as - mean(as) # index:  coDe = 1, coSo =2,  trFa =3, trSp=4
 ar <- c(1.1,1.2,-2,-2.1)
@@ -77,8 +86,8 @@ bsize <- 0.1 ## increasing survival with size
 # alphas <- inv.logit(rep(as, each = 100))
 size <- runif(N, 1, 15) ## plants will be at least 1cm once germinated and up to about 15cm at largest
 
-mu.surv <- alpha
-mu.rep <- alpha.r
+mu.surv <- inv.logit(alpha)
+mu.rep <- inv.logit(alpha.r)
 
 sigma.alpha.surv <- 0.2 # Among-individual variation in survival
 sigma.alpha.rep <- 0.2 # Among-individual variation in reproductive success
@@ -94,15 +103,59 @@ gamma.surv <- - logit(0.4) # State effect for survival
 gamma.rep <- logit(0.7)-logit(0.6) # State effect for reproductive success
 
 # Variance covariance matrix, separate for each plot, but shouldn't change among control/treatment 
-varcov.alpha <- array(NA, dim = c(2,2,nPlots))
-varcov.alpha[1,1,] <- sigma.alpha.surv^2
-varcov.alpha[2,2,] <- sigma.alpha.rep^2
-varcov.alpha[1,2,] <- varcov.alpha[2,1,] <- cor.alpha * sigma.alpha.phi * sigma.alpha.psi
+# varcov.alpha <- array(NA, dim = c(2,2,nPlots))
+# varcov.alpha[1,1,] <- sigma.alpha.surv^2
+# varcov.alpha[2,2,] <- sigma.alpha.rep^2
+# varcov.alpha[1,2,] <- varcov.alpha[2,1,] <- cor.alpha * sigma.alpha.surv * sigma.alpha.rep
+# alpha1 <- rmvnorm(N, c(0,0), varcov.alpha)
+varcov.alpha <- array(NA, dim = c(2,2))
+varcov.alpha[1,1] <- sigma.alpha.surv^2
+varcov.alpha[2,2] <- sigma.alpha.rep^2
+varcov.alpha[1,2] <- varcov.alpha[2,1] <- cor.alpha * sigma.alpha.surv * sigma.alpha.rep
 alpha1 <- rmvnorm(N, c(0,0), varcov.alpha)
 
+## Simulation of temporal variation
+epsilon <- array(NA, dim = c(nYears,2,nPlots))
+# Variance covariance matrix
+varcov.eps <- array(NA, dim = c(2,2,nPlots))
+varcov.eps[1,1,] <- sigma.eps.surv^2
+varcov.eps[2,2,] <- sigma.eps.rep^2
+varcov.eps[1,2,] <- varcov.eps[2,1,] <- cor.eps * sigma.eps.surv * sigma.eps.rep
+epsilon <- rmvnorm(nYears, c(0,0), varcov.eps)
+
+# Reproductive process success (1), failed (2)  ; rows: 400 individuals, col: 3 years, z: 4 plots
+rep.prob <- array(NA, dim = c(N, nYears, nPlots))
+for(t in 1:nYears){
+  for(p in 1:nPlots){
+    for(i in 1:N){
+      rep.prob[i,t,p] <- logit(mu.rep[p]) + alpha1[i,2] + epsilon[t,2]  ## 1 is survival, 2 is reproduction
+    }
+  }
+}
+
+## Simulation of the survival process
+mat.s <- array(NA, dim = c(N, nYears, nPlots)) # Survival matrix
+# Year and individual specific survival probabilities
+s.prob <- array(NA, dim = c(N, nYears, nPlots))
+for (t in 1:nYears){
+  for (p in 1:nPlots){
+    for (i in 1:N){
+      s.prob[i,t,p] <- logit(mu.rep[p]) + alpha1[i,1] + epsilon[t,1]
+    }
+  }
+}
+
+prec_gamma <- (log(2)/2)^-2
+gamma <- c()
+for (j in 1:2) {
+  gamma[j] <- dnorm(0.0, prec_gamma)
+}
 
 # parameters are treated as data for the simulation step
-data<-list(N=N,ct=ct, alpha=alpha, bsize = bsize, size = size)
+data<-list(N=N,ct=ct, nYears = nYears, alpha1= alpha1, alpha = alpha, bsize = bsize, size = size, #s.prob=s.prob,
+           # rep.prob = rep.prob, 
+           epsilon = epsilon, # gamma.rep = gamma.rep, gamma.surv = gamma.surv,
+           gamma = gamma)
 
 # Run JAGS but monitor the response variable instead of the parameters because we're checking if the model works 
 out <- run.jags(modelpepeSimulation, data = data,monitor=c("y_surv","y_rep"),sample=2, n.chains=1, summarise=FALSE)
