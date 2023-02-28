@@ -261,7 +261,7 @@ toPlot %>%+
 # fit model center caegorical coefficients (subtract out the mean)
 ```{r}
 # specify model in BUGS language
-modelpepe <- '	
+modelpepe <- "	
 data {
   # Data
   ## i individual, is in one of each plot
@@ -290,11 +290,15 @@ data {
 }
 
   ### PRIORS ###
-  # survival
-  p_surv ~ dnorm(0.0, 0.4444444)
+  # survival each year  Probably doesnt need to differ by year
+  for(t in 1:nYears){
+    p_surv[t] ~ dnorm(0.0, 0.4444444)
+  }
   
   # breeding
-  p_rep ~ dnorm(0.0, 0.4444444)
+  for(t in 1:nYears){
+    p_rep ~ dnorm(0.0, 0.4444444)
+  }
   # mu.psi.re ~ dnorm(0.0, 0.4444444) 
   
   # detection
@@ -359,12 +363,13 @@ data {
   mean.psi.re <- ilogit(mu.psi.re)
   mean.psi <- ilogit(mu.psi)
   mean.p <- ilogit(mu.p)
-}")
+}"
 writeLines(modelpepe,"centered_pepe.jags")
 
 # Bundle data
-jags.data <- list(SURVIVAL = SURVIVAL, BREED = BREED, FIRST = first, LAST = last, n.ind = n.ind, n.year = n.year)
-inits <- function(){list(SURVIVAL = init.surv, BREED = init.breed)}
+jags.data <- list(N= N, nPlots = nPlots, nYears = nYears, alpha = alpha, ct = ct, Pa_t = Pa_t, 
+                  size = size)
+# inits <- function(){list(SURVIVAL = init.surv, BREED = init.breed)}
 # Parameters monitored
 parameters <- c("mean.phi", "mean.psi", "mean.psi.re", "mean.p", "cor.alpha", "sigma.alpha.phi", "sigma.alpha.p
 si", "sigma.eps.phi", "sigma.eps.psi", "gamma")
@@ -383,7 +388,7 @@ RESULT[1:11,2,k] <- c(out1$Rhat$mean.phi, out1$Rhat$mean.psi, out1$Rhat$mean.psi
 t$cor.alpha, out1$Rhat$sigma.alpha.phi, out1$Rhat$sigma.alpha.psi, out1$Rhat$sigma.eps.phi, out1$Rhat$sigma.eps.p
 si, out1$Rhat$gamma[1], out1$Rhat$gamma[2])
 }
-'
+
 ```
 
 #######################################################################################################
