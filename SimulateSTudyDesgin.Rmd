@@ -32,7 +32,8 @@ lognormal for Beta_size impact of size
 
 Put together for MPM and estimate the lambda (or an IPM) 
 
-$\epsilon$ 
+$\gamma$ state dependence in survival and reproductive success
+$\epsilon$ environmental temporal environmental random effects
 $\phi$ survival probability, among-individual variation
 $\psi$ trident breeding success probability, among-individual variation
 
@@ -58,12 +59,12 @@ data {
     for(t in 2:nYears){
       y_surv[i,t] ~ dbern(p_surv[i,t] * y_surv[i,t-1] )
       logit(p_surv[i,t]) <- alpha[ct[i]] + gamma[1] * y_rep[i, t-1] + 
-                            # bsize * growth[i, t] +
+                            bsize * growth[i, t] +
                             alpha1[i,1,ct[i]] + epsilon[t,1,ct[i]] 
       
       y_rep[i,t] ~ dbern(p_rep[i,t] * y_surv[i,t-1]) ## reproduction dependent on survival
       logit(p_rep[i,t]) <- alpha[ ct[i] ] + gamma[2] * y_rep[i, t-1] + 
-                           # bsize * growth[i, t] +
+                           bsize * growth[i, t] +
                            alpha1[i,2, ct[i]] + epsilon[t,2,ct[i]]
     } ## Year loop
   } ## Individuals loop
@@ -90,7 +91,7 @@ boot::inv.logit(alpha)
 
 
 ## What size should be transplanted? 
-bsize <- 0.1 ## increasing survival with size
+bsize <- 0.1 ## increasing survival with size, a little
 # alphas <- inv.logit(rep(as, each = 100))
 size <- runif(N, 1, 15) ## plants will be at least 1cm once germinated and up to about 15cm at largest
 
@@ -103,7 +104,6 @@ size <- runif(N, 1, 15) ## plants will be at least 1cm once germinated and up to
 Pa_t <- rnorm(nYears, 0, 1) ## centered and scaled total annual precipitation, don't need growing degree days
 bGrowth <- 0.1
 bPrec <- 0.95
-bgrowth <- 0.1
 K <- 15 ## maximum size
 growth <- array(NA, dim = c(N, nYears))
 gr <- inv.logit(bGrowth + bPrec * Pa_t) ## growth rate, needs to be (0,1)
@@ -114,8 +114,6 @@ for(t in 2:nYears){
     print((growth[i,t-1] * gr[t]) * (1-(growth[i, t-1]/K)))
   }
 }
-
-plot(growth[,2]-growth[,1])
 
 data.frame(growth) %>%
   pivot_longer(cols = starts_with("X"), names_to = "Year", values_to = "Size") %>%
@@ -150,7 +148,7 @@ varcov.alpha[1,2,] <- varcov.alpha[2,1,] <- cor.alpha * sigma.alpha.surv * sigma
 for(p in 1:nPlots){
   alpha1[,,p] <- rmvnorm(N, c(0,0), varcov.alpha[,,p])
 }
-## Simulation of temporal variation
+## Simulation of temporal variation, environmenal variation
 epsilon <- array(NA, dim = c(nYears,2,nPlots))
 # Variance covariance matrix
 varcov.eps <- array(NA, dim = c(2,2,nPlots))
@@ -206,10 +204,14 @@ revSubstr <- function(x, start, stop) {
          function(x) paste(rev(rev(x)[start:stop]), collapse = ""), 
          USE.NAMES = FALSE)
 }
+
+PrecipXyear <- data.frame(Year = 1:4, Pa_t = Pa_t)
+
 toPlot <- as.data.frame(Simulated[1,]) %>%
   tibble::rownames_to_column(var= "rowname") %>%
   mutate(Var = substr(rowname, start = 1, stop = 6)) %>%
-  mutate(Year = revSubstr(rowname, start = 2, stop = 2)) %>%
+  mutate(Year = as.numeric(revSubstr(rowname, start = 2, stop = 2))) %>%
+  left_join(PrecipXyear, by = "Year") %>%
   dplyr::bind_cols(as.data.frame(Simulated[2,])) %>%
   dplyr::bind_cols(size = rep(size, times = 8)) %>% ## Size doesn't change each year, maybe fine as initial condition
   rename(Sim1 = "Simulated[1, ]") %>%
@@ -227,6 +229,13 @@ toPlot %>%
     theme_bw()+
     facet_wrap(~Year)+
   ggtitle("Survival")
+
+toPlot %>%
+  filter(Var == "y_surv") %>%
+  ggplot(   aes(Pa_t, Sim2, color = as.factor(Plot)))+
+    geom_smooth(method = "glm", method.args = list(family = "binomial"),se = TRUE, alpha = 0.5)+
+    theme_bw()+
+  ggtitle("Survival")
     
 
 toPlot %>%
@@ -236,6 +245,14 @@ toPlot %>%
     geom_smooth(method = "glm", method.args = list(family = "binomial"),se = TRUE, alpha = 0.5)+
     theme_bw()+
     facet_wrap(~Year)+
+  ggtitle("Reproduction")
+
+toPlot %>%+
+  
+  filter(Var == "y_rep[") %>%
+  ggplot(   aes(Pa_t, Sim2, color = as.factor(Plot)))+
+    geom_smooth(method = "glm", method.args = list(family = "binomial"),se = TRUE, alpha = 0.5)+
+    theme_bw()+
   ggtitle("Reproduction")
     
 ```
@@ -274,57 +291,65 @@ data {
 
   ### PRIORS ###
   # survival
-  mu.phi ~ dnorm(0.0, 0.4444444)
+  p_surv ~ dnorm(0.0, 0.4444444)
   
   # breeding
-  mu.psi ~ dnorm(0.0, 0.4444444)
-  mu.psi.re ~ dnorm(0.0, 0.4444444)
+  p_rep ~ dnorm(0.0, 0.4444444)
+  # mu.psi.re ~ dnorm(0.0, 0.4444444) 
   
   # detection
   # mu.p ~ dnorm(0.0, 0.4444444)
   
-  # state dependent effects
+  # state dependent effects, survival [1] and reporduction [2]
   prec_gamma <- pow(log(2)/2, -2);
   for (j in 1:2) {
-  gamma[j] ~ dnorm(0.0, prec_gamma);
+    gamma[j] ~ dnorm(0.0, prec_gamma);
   }
   # Individual effect
   # Cholesky decomposition with parameter expansion
   for (j in 1:2) {
-  A[j, j] ~ dnorm(0.0, 0.4444444)T(0.0,)
-  DeltaA[j, j] <- 1/tauA[j] ; tauA[j] ~ dgamma(1.5, 1.5);
-  LA[j, j] <- 1.0;
+    A[j, j] ~ dnorm(0.0, 0.4444444)T(0.0,)
+    DeltaA[j, j] <- 1/tauA[j]
+    tauA[j] ~ dgamma(1.5, 1.5)
+    LA[j, j] <- 1.0;
   }
-  LA[1, 2] <- 0.0; A[1, 2] <- 0.0; DeltaA[1, 2] <- 0.0;
-  LA[2, 1] ~ dnorm(0.0, 4.0); A[2, 1] <- 0.0; DeltaA[2, 1] <- 0.0;
+  LA[1, 2] <- 0.0
+  A[1, 2] <- 0.0
+  DeltaA[1, 2] <- 0.0
+  LA[2, 1] ~ dnorm(0.0, 4.0)
+  A[2, 1] <- 0.0
+  DeltaA[2, 1] <- 0.0
+  
   # covariance matrix
   Omega <- A %*% LA %*% DeltaA %*% t(LA) %*% A;
   for(i in 1:n.ind){
-  alpha[i, 1] <- A[1, 1] * (LA[1, 1] * xi_a[i, 1]);
-  alpha[i, 2] <- A[2, 2] * (LA[2, 1] * xi_a[i, 1] + LA[2, 2] * xi_a[i, 2]);
-  for(j in 1:2){
-  xi_a[i, j] ~ dnorm(0.0, tauA[j]);
-  }
+    alpha[i, 1] <- A[1, 1] * (LA[1, 1] * xi_a[i, 1]);
+    alpha[i, 2] <- A[2, 2] * (LA[2, 1] * xi_a[i, 1] + LA[2, 2] * xi_a[i, 2]);
+    for(j in 1:2){
+      xi_a[i, j] ~ dnorm(0.0, tauA[j]);
+      } 
   }
   sigma.alpha.phi <- sqrt(Omega[1, 1])
   sigma.alpha.psi <- sqrt(Omega[2, 2])
   cor.alpha <- Omega[1, 2] / sqrt(Omega[1, 1] * Omega[2, 2])
   # Environmental effect
   for (j in 1:2) {
-  E[j, j] ~ dnorm(0.0, 0.4444444)T(0.0,)
-  DeltaE[j, j] <- 1/tauE[j] ; tauE[j] ~ dgamma(1.5, 1.5);
-  LE[j, j] <- 1.0;
+    E[j, j] ~ dnorm(0.0, 0.4444444)T(0.0,)
+    DeltaE[j, j] <- 1/tauE[j] ; tauE[j] ~ dgamma(1.5, 1.5);
+    LE[j, j] <- 1.0;
   }
   LE[1, 2] <- 0.0; E[1, 2] <- 0.0; DeltaE[1, 2] <- 0.0;
   LE[2, 1] ~ dnorm(0.0, 4.0); E[2, 1] <- 0.0; DeltaE[2, 1] <- 0.0;
+  bPrec ~ dnorm(0,0.444)
+  
   # covariance matrix
   Lambda <- E %*% LE %*% DeltaE %*% t(LE) %*% E;
   for(i in 1:n.year){
-  epsilon[i, 1] <- E[1, 1] * (LE[1, 1] * xi_e[i, 1]);
-  epsilon[i, 2] <- E[2, 2] * (LE[2, 1] * xi_e[i, 1] + LE[2, 2] * xi_e[i, 2]);
-  for(j in 1:2){
-  xi_e[i, j] ~ dnorm(0.0, tauE[j]);
-  }
+    epsilon[i, 1] <- E[1, 1] * (LE[1, 1] * xi_e[i, 1]);
+    epsilon[i, 2] <- E[2, 2] * (LE[2, 1] * xi_e[i, 1] + LE[2, 2] * xi_e[i, 2]);
+    for(j in 1:2){
+      xi_e[i, j] ~ dnorm(0.0, tauE[j]);
+    }
   }
   sigma.eps.phi <- sqrt(Lambda[1, 1])
   sigma.eps.psi <- sqrt(Lambda[2, 2])
@@ -338,8 +363,7 @@ data {
 writeLines(modelpepe,"centered_pepe.jags")
 
 # Bundle data
-jags.data <- list(SURVIVAL = SURVIVAL, BREED = BREED, FIRST = first, LAST = last, n.ind = n.ind, n.year = n.yea
-r)
+jags.data <- list(SURVIVAL = SURVIVAL, BREED = BREED, FIRST = first, LAST = last, n.ind = n.ind, n.year = n.year)
 inits <- function(){list(SURVIVAL = init.surv, BREED = init.breed)}
 # Parameters monitored
 parameters <- c("mean.phi", "mean.psi", "mean.psi.re", "mean.p", "cor.alpha", "sigma.alpha.phi", "sigma.alpha.p
