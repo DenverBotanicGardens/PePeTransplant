@@ -359,9 +359,13 @@ data {
   sigma.eps.psi <- sqrt(Lambda[2, 2])
   cor.eps <- Lambda[1, 2] / sqrt(Lambda[1, 1] * Lambda[2, 2])
   # Derived quantity
-  mean.phi <- ilogit(mu.phi)
-  mean.psi.re <- ilogit(mu.psi.re)
-  mean.psi <- ilogit(mu.psi)
+  for(i in 1:nPlots){
+    mean.surv <- ilogit(mu.phi)
+  }
+  # mean.psi.re <- ilogit(mu.psi.re)
+  for(i in 1:nPlots){
+    mean.rep[i] <- ilogit(mu.rep[i])
+  }
   mean.p <- ilogit(mu.p)
 }"
 writeLines(modelpepe,"centered_pepe.jags")
@@ -392,6 +396,134 @@ si, out1$Rhat$gamma[1], out1$Rhat$gamma[2])
 ```
 
 #######################################################################################################
+
+
+
+Fay et al 2021 ignore detection, add differences among plots   
+```{r}
+### JAGS model
+library(jagsUI)
+cat(file = "model01.jags", "
+  model {
+  ### DATA
+  # SURVIVAL[i, t, p] with 1 and 0; phi
+  # BREED[i, t, p] with 1 and 0; psi
+  # n.year [t]
+  # n.ind [i]
+  # n.plots [p]
+  
+  ### LIKELIHOOD ###
+    for(i in 1:n.ind) {
+    ## Initial conditions
+    SURVIVAL[i,1] ~ dbern(1.0)
+    BREED[i,1] ~ dbern(psi[ct[i], 1] * SURVIVAL[i, 1])
+    psi[ct[i], 1] <- ilogit(mu.psi.re[ct[i]] + alpha[ct[i], 2] + epsilon[1, 2])
+    
+    ## Following years
+    for(t in 2:n.year) {
+      # survival
+      SURVIVAL[i, t] ~ dbern(surv[i, t] * SURVIVAL[i, t-1])
+      surv[i, t] <- ilogit(mu.phi[ct[i]] + gamma[1,ct[i]] * BREED[i, t-1] + alpha[i, 1] + epsilon[t, 1])
+      # breed
+      BREED[i, t] ~ dbern(psi[i, t] * SURVIVAL[i, t])
+      psi[i, t] <- ilogit(mu.psi[ct[i]] + gamma[2,ct[i]] * BREED[i, t-1] + alpha[i, 2] + epsilon[t, 2])
+    }
+  }
+  
+  ### PRIORS ###
+    # survival
+    for(p in 1:n.plots){
+      mu.phi[p] ~ dnorm(0.0, 0.4444444)
+    }
+    # breeding
+    for(p in 1:n.plots){
+      mu.psi[p] ~ dnorm(0.0, 0.4444444)
+    }
+    ## For the first year, mu.psi for the remaining years
+    for(p in 1:n.plots){
+      mu.psi.re ~ dnorm(0.0, 0.4444444)
+    }
+    
+    # state dependent effects
+    prec_gamma <- pow(log(2)/2, -2);
+    for(p in 1:n.plots){
+      for (j in 1:2) {
+        gamma[j,p] ~ dnorm(0.0, prec_gamma);
+      }
+    }
+    
+  # Individual effect
+  # Cholesky decomposition with parameter expansion
+  for (j in 1:2) {
+    A[j, j] ~ dnorm(0.0, 0.4444444)T(0.0,)
+    DeltaA[j, j] <- 1/tauA[j] ; tauA[j] ~ dgamma(1.5, 1.5);
+    LA[j, j] <- 1.0;
+  }
+  LA[1, 2] <- 0.0; A[1, 2] <- 0.0; DeltaA[1, 2] <- 0.0;
+  LA[2, 1] ~ dnorm(0.0, 4.0); A[2, 1] <- 0.0; DeltaA[2, 1] <- 0.0;
+  # covariance matrix
+  Omega <- A %*% LA %*% DeltaA %*% t(LA) %*% A;
+  for(i in 1:n.ind){
+    alpha[i, 1] <- A[1, 1] * (LA[1, 1] * xi_a[i, 1]);
+    alpha[i, 2] <- A[2, 2] * (LA[2, 1] * xi_a[i, 1] + LA[2, 2] * xi_a[i, 2]);
+    for(j in 1:2){
+      xi_a[i, j] ~ dnorm(0.0, tauA[j]);
+    }
+  }
+  sigma.alpha.phi <- sqrt(Omega[1, 1])
+  sigma.alpha.psi <- sqrt(Omega[2, 2])
+  cor.alpha <- Omega[1, 2] / sqrt(Omega[1, 1] * Omega[2, 2])
+  # Environmental effect
+  for (j in 1:2) {
+    E[j, j] ~ dnorm(0.0, 0.4444444)T(0.0,)
+    DeltaE[j, j] <- 1/tauE[j] ; tauE[j] ~ dgamma(1.5, 1.5);
+    LE[j, j] <- 1.0;
+  }
+  LE[1, 2] <- 0.0; E[1, 2] <- 0.0; DeltaE[1, 2] <- 0.0;
+  LE[2, 1] ~ dnorm(0.0, 4.0); E[2, 1] <- 0.0; DeltaE[2, 1] <- 0.0;
+  # covariance matrix
+  Lambda <- E %*% LE %*% DeltaE %*% t(LE) %*% E;
+  for(i in 1:n.year){
+    epsilon[i, 1] <- E[1, 1] * (LE[1, 1] * xi_e[i, 1]);
+    epsilon[i, 2] <- E[2, 2] * (LE[2, 1] * xi_e[i, 1] + LE[2, 2] * xi_e[i, 2]);
+    for(j in 1:2){
+      xi_e[i, j] ~ dnorm(0.0, tauE[j]);
+    }
+  }
+  sigma.eps.phi <- sqrt(Lambda[1, 1])
+  sigma.eps.psi <- sqrt(Lambda[2, 2])
+  cor.eps <- Lambda[1, 2] / sqrt(Lambda[1, 1] * Lambda[2, 2])
+  # Derived quantity
+  mean.phi <- ilogit(mu.phi)
+  mean.psi.re <- ilogit(mu.psi.re)
+  mean.psi <- ilogit(mu.psi)
+  mean.p <- ilogit(mu.p)
+  }
+")
+# Bundle data
+jags.data <- list(SURVIVAL = SURVIVAL, BREED = BREED, FIRST = first, LAST = last, n.ind = n.ind, n.year = n.yea
+r)
+inits <- function(){list(SURVIVAL = init.surv, BREED = init.breed)}
+# Parameters monitored
+parameters <- c("mean.phi", "mean.psi", "mean.psi.re", "mean.p", "cor.alpha", "sigma.alpha.phi", "sigma.alpha.p
+si", "sigma.eps.phi", "sigma.eps.psi", "gamma")
+# MCMC settings
+ni <- 8000
+nt <- 4
+nb <- 2000
+nc <- 3
+# Call JAGS from R (BRT 1 min)
+out1 <- jags(jags.data, inits, parameters, "model01.jags", n.chains = nc, n.thin = nt, n.iter = ni, n.burnin =
+nb, parallel = TRUE)
+RESULT[1:11,1,k] <- c(out1$mean$mean.phi, out1$mean$mean.psi, out1$mean$mean.psi.re, out1$mean$mean.p, out1$mea
+n$cor.alpha, out1$mean$sigma.alpha.phi, out1$mean$sigma.alpha.psi, out1$mean$sigma.eps.phi, out1$mean$sigma.eps.p
+si, out1$mean$gamma[1], out1$mean$gamma[2])
+RESULT[1:11,2,k] <- c(out1$Rhat$mean.phi, out1$Rhat$mean.psi, out1$Rhat$mean.psi.re, out1$Rhat$mean.p, out1$Rha
+t$cor.alpha, out1$Rhat$sigma.alpha.phi, out1$Rhat$sigma.alpha.psi, out1$Rhat$sigma.eps.phi, out1$Rhat$sigma.eps.p
+si, out1$Rhat$gamma[1], out1$Rhat$gamma[2])
+}
+```
+
 
 
 
