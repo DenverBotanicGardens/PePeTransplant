@@ -1,0 +1,23 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r, echo = FALSE}
+setwd("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_lolly_TOMSTdatalogger/")
+```
+
+
+
+```{r}
+library(myClim)
+
+datalogger1 <- mc_read_files(c("data_95135950_2023_10_17_0.csv", "data_95135951_2023_10_17_0.csv","data_95135952_2023_10_17_0.csv"),
+                             dataformat_name = "TOMST")
+
+files_csv <- system.file("extdata", "files_table.csv", package = "myClim")
+localities_csv <- system.file("extdata", "localities_table.csv", package = "myClim")
+tomst_data <- mc_read_data(files_csv, localities_csv)
+```
+

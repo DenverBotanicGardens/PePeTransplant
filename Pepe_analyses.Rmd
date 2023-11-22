@@ -1,0 +1,566 @@
+---
+title: "Pepe_transplant"
+author: "Michelle DePrenger-Levin"
+date: "2023-08-29"
+output: html_document
+---
+
+---
+```{r}
+
+rm(list=ls()) 
+library(R2jags)
+library(runjags)
+library(mcmcplots)
+library(boot)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+library(RMark)
+```
+
+
+
+```{r}
+pepe.spring <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/2023Spring_Penstemon-penlandii.csv")
+
+pepe.fall <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/20231016Fall_Penstemon-penlandii_dataentry_2.csv")
+
+## need to confirm 
+pepe.20230626 <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/20230626Spring_Penstemon-penlandii.csv")
+
+## Need control plot data
+pepe.20231016_control <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/20231016_ControlTransects_dataentry.csv")
+
+## Data from Fall 2023-10-16 and 2320-10-17 
+pepe.springfall <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/20231016Spring_Penstemon-penlandii_fall.csv")
+
+```
+
+Format for datasheets
+```{r}
+
+
+transBlock <- data.frame(TransectID = 1:40, Block = rep(1:20, each = 2))
+
+pepe.spring <- pepe.spring %>%
+  mutate(Date = as.Date("2023-05-31")) %>%
+  inner_join(transBlock) %>%
+  arrange(Block, TransectID)
+
+Transect_positions <- data.frame(Transect_position = 1:10, xy = c("0.25, 0.25",
+                                                                  "0.75, 0.75",
+                                                                  "0.25, 1.25",
+                                                                  "0.75, 1.75",
+                                                                  "0.25, 2.25",
+                                                                  "0.75, 2.75",
+                                                                  "0.25, 3.25",
+                                                                  "0.75, 3.75",
+                                                                  "0.25, 4.25",
+                                                                  "0.75, 4.75"))
+  
+
+
+## When only spring
+pepe.annual <- pepe.spring %>%
+  mutate(RandPlant = PlantID) %>%
+  complete(nesting(TransectID, Block), Transect_positions) %>%
+  group_by(TransectID, Block) %>%
+  arrange(Transect_position, .by_group = TRUE)
+
+pepe.annual %>%
+  filter(!is.na(Transect_position)) %>%
+  group_by(TransectID) %>%
+  summarise(n = n())
+
+pepe.annual %>%
+  filter(TransectID == 2)
+
+## Transplants
+## Assign random number to each location
+DataSheets <- pepe.annual %>%
+  # group_by(TransectID) %>%
+  mutate(RandPlant = if_else(is.na(RandPlant), sample(1:100, length(is.na(RandPlant)), replace = FALSE), RandPlant),
+         Season = if_else(is.na(Season), "Fall", Season))
+
+pepe.annual.foo <- pepe.annual
+pepe.annual.foo$RandPlant[is.na(pepe.annual.foo$RandPlant)] <- sample(1:100, 100, replace = FALSE)
+
+table(pepe.annual.foo$RandPlant, pepe.annual.foo$TransectID)
+
+pepe.annual.foo %>%
+  group_by(TransectID) %>%
+  arrange(Transect_position, .by_group = TRUE) %>%
+  filter(is.na(Date) ) %>%
+  write.csv(  "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/2023Fall_Penstemon-penlandii.csv")
+  
+ExistingPlants <- pepe.annual %>%
+  group_by(TransectID) %>%
+  arrange(Transect_position, Y, X, .by_group = TRUE) %>%
+  select(c(TransectID:PlantID,X,Y)) %>%
+  filter(is.na(Transect_position))
+
+ExistingPlants %>%
+  group_by(TransectID) %>%
+  arrange(Y,X, .by_group = TRUE) %>%
+  write.csv(  "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/2023ExistTrans_Penstemon-penlandii.csv")
+
+
+pepe.20230626 <- pepe.20230626 %>%
+  mutate(Date = as.Date("2023-06-26")) %>%
+  inner_join(transBlock) %>%
+  arrange(Block, TransectID)
+
+pepe.spring <- pepe.spring %>%
+  bind_rows(pepe.20230626)
+
+pepe.3surv <- pepe.springfall %>%
+  dplyr::select(c(TransectID, Season, Transect_position, xy, 
+                  PlantID:Y, Date)) %>%
+  inner_join(transBlock) %>%
+  arrange(Block, TransectID) %>%
+  mutate(Date = as.Date("2023/10/17"))
+
+names(pepe.3surv) <- names(pepe.spring)
+pepe.3surv <- pepe.3surv %>%
+  bind_rows(pepe.spring)
+
+```
+
+Detection among transplant plots and control plots (need to add that data)     
+In manuscripts, cite this appendix for RMark and in describing it make sure to say something like “we used the R (R Development Core Team 2007) package RMark (Laake 2013) to construct models for program MARK (White and Burnham 1999).” Use citation("RMark") in R to get the proper citation for R.*
+
+```{r}
+
+## All individuals for annual 
+pepe.annual <- pepe.springfall %>%
+  mutate(IndivID = 1:nrow(pepe.springfall)) %>%
+  mutate(Date = as.Date("2023/10/17"))
+
+pepe.spring23 <- pepe.annual %>%
+  dplyr::select(c(IndivID, X, Y, TransectID:Season, Transect_position, Height.cm:Comments)) %>%
+  mutate(Date = as.Date("2023-05-31"))
+
+pepe.fall23 <- pepe.annual %>%
+  dplyr::select(c(IndivID, X, Y, TransectID:Season, Transect_position, Height.cm.1:Comments.1)) %>%
+  # mutate(across(Height.cm:NumRep), as.numeric) %>%
+  mutate(Date = as.Date("2023-10-17"))
+
+# pepe.fall23[,7:10] <- sapply(pepe.fall23[,7:10],as.numeric)
+
+names(pepe.fall23) <- names(pepe.spring23)
+
+pepe.2023 <- bind_rows(pepe.spring23, pepe.fall23)
+
+## make capture history with early and late, Cannot include the transplanted individuals  
+## Make a design matrix of groups, columns for each TransectID, 0 or 1 if in that Transect
+pepe.dm <- pepe.2023 %>%
+  filter(is.na(Transect_position)) %>%
+  filter(!is.na(Height.cm)) %>%
+  mutate(Trans01 = if_else(!is.na(Transect_position), 1, 0)) %>%
+  mutate(mark = if_else(Height.cm > 0, 1, 0)) %>%
+  dplyr::select(Date,mark,IndivID, Trans01, TransectID) %>%
+  pivot_wider(names_from = Date, names_prefix = "Survey", values_from = mark, values_fill = 0) %>%
+  unite(ch, `Survey2023-05-31`:`Survey2023-10-17`, sep="") %>%
+  mutate(TransectID = as.factor(TransectID))
+
+## separate column for each factor, no intercept
+dmTrans <- model.matrix(~ -1 + TransectID, pepe.dm)
+dmTrans <- dmTrans[,colSums(dmTrans) != 0]
+
+## Phi and p
+# dm <- cbind(dmTrans,matrix(0,nrow=nrow(pepe.dm),ncol=length(colnames(dmTrans))))
+# dm <- rbind(dm,cbind(matrix(0,nrow=nrow(pepe.dm),ncol=length(colnames(dmTrans))),dmTrans))
+# colnames(dm) <- c(paste("p:", colnames(dmTrans), sep=""),
+#                   paste("Phi:", colnames(dmTrans), sep=""))
+
+pepe.2023 %>%
+  filter(is.na(Transect_position)) %>%
+  filter(!is.na(Height.cm)) %>%
+  ## Seems to have no data for 16, 22, or 24
+  # filter(!(TransectID %in% c(16,22,24))) %>%
+  filter(TransectID != 16) %>%
+  mutate(Trans01 = if_else(!is.na(Transect_position), 1, 0)) %>%
+  mutate(mark = if_else(Height.cm > 0, 1, 0)) %>%
+  dplyr::select(Date,mark,IndivID, Trans01, TransectID) %>%
+  pivot_wider(names_from = Date, names_prefix = "Survey", values_from = mark, values_fill = 0) %>%
+  unite(ch, `Survey2023-05-31`:`Survey2023-10-17`, sep="") %>%
+  mutate(Trans10 = if_else(TransectID == 10, 1, 0)) %>%
+  mutate(Trans12 = if_else(TransectID == 12, 1, 0)) %>%
+  mutate(Trans18 = if_else(TransectID == 18, 1, 0)) %>%
+  # mutate(Trans16 = if_else(TransectID == 16, 1, 0)) %>%
+  mutate(Trans20 = if_else(TransectID == 20, 1, 0)) %>%
+  mutate(Trans22 = if_else(TransectID == 22, 1, 0)) %>%
+  mutate(Trans24 = if_else(TransectID == 24, 1, 0)) %>%
+  mutate(Trans26 = if_else(TransectID == 26, 1, 0)) %>%
+  mutate(Trans32 = if_else(TransectID == 32, 1, 0)) %>%
+  mutate(Trans34 = if_else(TransectID == 34, 1, 0)) %>%
+  mutate(Trans36 = if_else(TransectID == 36, 1, 0)) %>%
+  mutate(Trans38 = if_else(TransectID == 38, 1, 0)) %>%
+  mutate(Trans40 = if_else(TransectID == 40, "1;", "0;")) %>%
+  # bind_cols(dmTrans[,-1]) %>%
+  # mutate(TransectID40 = "TransectID40;") %>%
+  dplyr::select(c(ch:Trans40)) %>%
+  write.table( file = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/2023ExistTrans_Penstemon-penlandii.inp", sep = " ", col.names = FALSE, row.names = FALSE)
+
+transInclude <- pepe.2023 %>%
+  filter(is.na(Transect_position)) %>%
+  filter(!is.na(Height.cm)) %>%
+  # filter(!(TransectID %in% c(16,22,24))) %>%
+  filter(TransectID != 16) %>%
+  mutate(mark = if_else(Height.cm > 0, 1, 0)) %>%
+  dplyr::select(Date,mark,IndivID, TransectID) %>%
+  pivot_wider(names_from = Date, names_prefix = "Survey", values_from = mark, values_fill = 0) %>%
+  distinct(TransectID) %>%
+  mutate(TransectID = as.factor(TransectID))
+
+pepe.inp <- convert.inp("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/2023ExistTrans_Penstemon-penlandii.inp", 
+                        group.df = transInclude, covariates = NULL)
+
+
+pepe.cjs <- process.data(pepe.inp, model = "Closed", groups = "TransectID")
+pepe.ddl <- make.design.data(pepe.cjs)
+
+pepe.ddl$p$group
+pepe.ddl$c$group
+
+run.models <- function() {
+  c.dot = list(formula =~ 1)
+  c.plot = list(formula = ~TransectID)
+  p.dot = list(formula =~1)
+  p.plot = list(formula = ~TransectID)
+  f0.dot = list(formula = ~1)
+  f0.plot = list(formula = ~TransectID)
+  
+  mod.list <- create.model.list("Closed")
+  
+  results.out <- mark.wrapper(mod.list, data = pepe.cjs, ddl = pepe.ddl, output = FALSE)
+  return(results.out)
+}
+
+pepe.results <- run.models()
+
+## Model-selection table
+pepe.results
+
+bestmod <- pepe.results$p.plot.c.plot.f0.dot$results$real
+
+bestmod %>%
+  mutate(rnam = row.names(.)) %>%
+  separate(rnam, into = c("Parameter","Group","Time")) %>%
+ggplot(  aes(x = Parameter, y = estimate, color = Parameter, group = Parameter))+
+  geom_jitter()+
+  geom_boxplot()+
+  theme_bw()
+
+29/nrow(pepe.2023)
+
+textp.c.f0 <- bestmod %>%
+  mutate(rnam = row.names(.)) %>%
+  separate(rnam, into = c("Parameter","Group","Time")) %>%
+  mutate(Group = gsub( "g", "",Group))
+
+```
+
+```{r}
+
+fig6 <- pepe.2023 %>%
+  filter(is.na(Transect_position)) %>%
+  group_by(TransectID) %>%
+  summarise(Abundance = n()) %>%
+  filter(Abundance > 0) %>%
+  ggplot(  aes(TransectID, Abundance))+
+  geom_bar(stat = "identity")+
+  theme_bw()+
+  geom_text(aes(label = round(Abundance/5,2)), vjust = -0.2) +
+  xlab("Transects")
+# +
+#   geom_point(data = textp.c.f0, aes(Group, estimate*100, color = Parameter))
+  
+ggsave(file = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Figures/exisitingpertreatment.jpg", fig6, width=150, height=125,units='mm', dpi=300)  
+```
+
+
+
+
+What percent are flowering in 2023-06-26 among the transplanted individuals?
+```{r}
+percFl <- pepe.3surv %>%
+  mutate(Trans01 = if_else(!is.na(Transect_position), 1, 0)) %>%
+  filter(Trans01 == 1) %>%
+  group_by(TransectID, Date) %>%
+  replace(is.na(.), 0) %>%
+  summarise(PercFl = sum(Repro)/5)
+
+pepe.3surv %>%
+  filter(TransectID %in% c(30,32)) %>%
+  replace(is.na(.), 0)
+
+percFl %>%
+  print(n=60)
+
+ggplot(percFl, aes(Date, PercFl, color = as.factor(TransectID))) +
+  geom_jitter(height = 0.0, width = 0.5) +
+  # geom_line() +
+  theme_bw()
+  
+
+## On average, percent reproduction increased by 17% (0% to 60% increase)
+percFl %>%
+  group_by(TransectID) %>%
+  summarise(ChangePercFl = PercFl[2]-PercFl[1],
+            Chang2 = PercFl[3]-PercFl[2]) %>%
+  ungroup() %>%
+  summarise(meanChange1 = mean(ChangePercFl),
+            meanChange2 = mean(Chang2))
+
+
+pepe.3surv %>%
+  replace(is.na(.), 0) %>%
+  mutate(Trans01 = if_else(!is.na(Transect_position), 1, 0)) %>%
+  filter(Trans01 == 1) %>%
+  group_by(TransectID, Date) %>%
+  summarise(PercFl = sum(Repro)/5) %>%
+  ungroup() %>%
+  group_by(Date) %>%
+  summarise(meanFl = mean(PercFl),
+            minFl = min(PercFl),
+            maxFl = max(PercFl))
+
+## Survival from May to June to October
+survSpring <- pepe.3surv %>%
+  filter(PlantID < 6) %>%
+  group_by(TransectID, Date) %>%
+  summarise(Surv = length(Height.cm[Height.cm > 0])/5)
+
+survSpring %>%
+  ggplot(  aes(Date, Surv, color = as.factor(TransectID)))+
+  geom_jitter(height = 0, width = 0.1)+
+  geom_line() +
+  theme_bw()
+
+survSpring %>%
+  group_by(Date) %>%
+  # filter(Date == as.Date("2023-06-26")) %>%
+  summarise(meanSurv = mean(Surv),
+            minSurv = min(Surv),
+            maxSurv = max(Surv))
+```
+
+
+
+
+```{r}
+pepe.rootshoot <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/2023_Penstemon-penlandii_rootshoot.csv")
+```
+
+```{r}
+
+pepe.rootshoot$Season <- factor(pepe.rootshoot$Season, levels = c("Spring","Fall"))
+
+# Not significant
+ggplot(pepe.rootshoot, aes( NumTertiaryRoots,Height, color = Trowel.BulbPlant,
+                            linetype = Season)) +
+  geom_point() +
+  stat_smooth(method = "lm") +
+  theme_bw()+
+  facet_wrap(~Season)
+
+ggplot(pepe.rootshoot, aes(Taproot.diameter,Height,  color = Trowel.BulbPlant)) +
+  geom_point() +
+  stat_smooth(method = "lm") +
+  theme_bw()+
+  facet_wrap(~Season)
+
+# Not significant
+ggplot(pepe.rootshoot, aes(Num.lateral, Height, color = Trowel.BulbPlant)) +
+  geom_point() +
+  stat_smooth(method = "lm") +
+  theme_bw()+
+  facet_wrap(~Season)
+
+## There are not more lateral roots as the taproot lengthens but there are more lateral roots later (the bulb planter wouldn't rip them off compared to the trowel)
+ggplot(pepe.rootshoot, aes(Taprootlength, Num.lateral, color = Trowel.BulbPlant)) +
+  geom_point() +
+  stat_smooth(method = "lm") +
+  theme_bw()+
+  facet_wrap(~Season, scales = "free")
+
+ggplot(pepe.rootshoot, aes(Num.lateral, Height)) +
+  geom_point() +
+  stat_smooth(method = "lm") +
+  theme_bw()+
+  facet_wrap(~Season)
+
+
+
+## since bulb is later, number of lateral roots given taproot length which should also differ by technique
+ggplot(pepe.rootshoot, aes(Num.lateral/Taprootlength, Height, color = Trowel.BulbPlant)) +
+  geom_point() +
+  stat_smooth(method = "lm") +
+  theme_bw()+
+  facet_wrap(~Season)
+
+ggplot(pepe.rootshoot, aes(Taprootlength, Height, color = Trowel.BulbPlant)) +
+  geom_point() +
+  stat_smooth(method = "lm") +
+  theme_bw()
+
+pepe.rootshoot %>%
+  # filter(Length.longest < 20) %>%
+ggplot(  aes(Height, Length.longest, color = Trowel.BulbPlant)) +
+  geom_point() +
+  stat_smooth(method = "lm") +
+  theme_bw()
+
+# The number of root hairs does not depend on the length of the longest root
+pepe.rootshoot %>%
+  # filter(Length.longest < 20) %>%
+ggplot(  aes(Length.longest, NumTertiaryRoots, color = Trowel.BulbPlant)) +
+  stat_smooth(method = "lm") +
+  geom_point() +
+  theme_bw()+
+  xlab("Length of longest root (cm)")+
+  ylab("Root hairs")+
+  scale_color_manual("Method", values = c("grey30","violet"))
+
+# The number of root hairs depends on the number of lateral roots
+pepe.rootshoot %>%
+  # filter(Length.longest < 20) %>%
+ggplot(  aes(Num.lateral, NumTertiaryRoots, color = Trowel.BulbPlant)) +
+  stat_smooth(method = "lm") +
+  geom_point() +
+  theme_bw()+
+  xlab("Lateral roots")+
+  ylab("Root hairs")+
+  scale_color_manual("Method", values = c("grey30","violet"))
+
+# Number of lateral roots does not depend on length of longest root for either method
+pepe.rootshoot %>%
+  # filter(Length.longest < 20) %>%
+ggplot(  aes(Length.longest, Num.lateral, color = Trowel.BulbPlant)) +
+  stat_smooth(method = "lm") +
+  geom_point() +
+  theme_bw()+
+  # xlab("Length of longest root (cm)")+
+  # ylab("Root hairs")+
+  scale_color_manual("Method", values = c("grey30","violet"))
+
+# Number of root hairs/length of longest root larger for bulb (later) and trowel (two weeks earlier) 
+pepe.rootshoot %>%
+ggplot(  aes(NumTertiaryRoots/Length.longest, Trowel.BulbPlant)) +
+  geom_boxplot()
+
+## The number of lateral roots does not correlate with height for the bulb planter method (and later )
+pepe.rootshoot %>%
+ggplot(  aes(Height, Num.lateral, color = Trowel.BulbPlant)) +
+  stat_smooth(method = "lm") +
+  geom_point() +
+  theme_bw()+
+  # xlab("Length of longest root (cm)")+
+  # ylab("Root hairs")+
+  scale_color_manual("Method", values = c("grey30","violet"))
+
+pepe.rootshoot %>%
+ggplot(  aes(Height, Num.lateral)) +
+  stat_smooth(method = "lm") +
+  geom_point() +
+  theme_bw()
+  # xlab("Length of longest root (cm)")+
+  # ylab("Root hairs")
+  
+  
+pepe.rootshoot %>%
+  # filter(Length.longest < 20) %>%
+ggplot(  aes( Height,NumTertiaryRoots, color = Trowel.BulbPlant)) +
+  stat_smooth(method = "lm") +
+  geom_point() +
+  theme_bw()+
+  ylab("Root hairs")+
+  xlab("Height (cm)")+
+  scale_color_manual("Method", values = c("grey30","violet"))
+
+pepe.rootshoot %>%
+  # filter(Length.longest < 20) %>%
+ggplot(  aes(Length.longest, Height, color = Trowel.BulbPlant)) +
+  stat_smooth(method = "lm") +
+  geom_point() +
+  theme_bw()+
+  xlab("Length of longest root (cm)")+
+  ylab("Height (cm)")+
+  scale_color_manual("Method", values = c("grey30","violet"))
+
+ggplot(pepe.rootshoot, aes(Height, fill = Trowel.BulbPlant))+
+  geom_density(alpha = 0.5)
+
+ggplot(pepe.rootshoot, aes(Width, fill = Trowel.BulbPlant))+
+  geom_density(alpha = 0.5)
+
+## length of longest lateral root by timing/method
+ggplot(pepe.rootshoot, aes(Length.longest, fill = Trowel.BulbPlant))+
+  geom_boxplot(alpha = 0.5)
+
+```
+
+
+```{r}
+
+panel.cor <- function(x, y, digits = 2, prefix = "", cex.cor, ...) {
+    usr <- par("usr")
+    on.exit(par(usr))
+    par(usr = c(0, 1, 0, 1))
+    Cor <- abs(cor(x, y)) # Remove abs function if desired
+    txt <- paste0(prefix, format(c(Cor, 0.123456789), digits = digits)[1])
+    if(missing(cex.cor)) {
+        cex.cor <- 0.4 / strwidth(txt)
+    }
+    text(0.5, 0.5, txt,
+         cex = 1 + cex.cor * Cor) # Resize the text by level of correlation
+}
+
+panel.hist <- function(x, ...)
+{
+    usr <- par("usr")
+    par(usr = c(usr[1:2], 0, 1.5) )
+    h <- hist(x, plot = FALSE)
+    breaks <- h$breaks; nB <- length(breaks)
+    y <- h$counts; y <- y/max(y)
+    rect(breaks[-nB], 0, breaks[-1], y, col = "grey", ...)
+}
+    
+cor(pepe.rootshoot[,4:13])
+```
+
+```{r}
+jpeg("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Root2Shootcorr.jpg",
+     width=200, height=200,units='mm', res=300)
+
+pairs(pepe.rootshoot[,c(4:5,8:12)],
+      bg = rainbow(2)[as.factor(pepe.rootshoot$Trowel.BulbPlant)],
+      # col = rainbow(2)[as.factor(pepe.rootshoot$Trowel.BulbPlant)],
+      pch = 21,
+      lower.panel = panel.cor,
+      diag.panel = panel.hist)
+      # lower.panel = panel.smooth)
+
+dev.off()
+```
+
+
+
+TOMST data loggers   
+```{r}
+library(myClim)
+
+datalogger1 <- mc_read_files(c("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_lolly_TOMSTdatalogger/data_95135950_2023_10_17_0.csv", "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_lolly_TOMSTdatalogger/data_95135951_2023_10_17_0.csv","C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_lolly_TOMSTdatalogger/data_95135952_2023_10_17_0.csv"),
+                             dataformat_name = "TOMST")
+
+files_csv <- system.file("extdata", "files_table.csv", package = "myClim")
+localities_csv <- system.file("extdata", "localities_table.csv", package = "myClim")
+tomst_data <- mc_read_data(files_csv, localities_csv)
+
+  
+  # mc_prep_clean(data = )
+```
+
