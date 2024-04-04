@@ -516,35 +516,22 @@ recapt %>%
 
 fig6 <- pepe.all.2023 %>%
   filter(is.na(Transect_position)) %>%
-  group_by(TransectID) %>%
+  group_by(TransectID, Block) %>%
   summarise(Abundance = n()) %>%
-  filter(Abundance > 0) %>%
-  ggplot(  aes(TransectID, Abundance))+
-  geom_bar(stat = "identity")+
-  theme_bw()+
-  geom_text(aes(label = round(Abundance/5,2)), vjust = -0.2) +
-  xlab("Transects")
+  full_join(pepe.transects, by = c("TransectID","Block")) %>%
+  # filter(Abundance > 0) %>%
+  ggplot(  aes(TransectID, Abundance, fill = Type_CT_TT))+
+    geom_bar(stat = "identity")+
+    theme_bw()+
+    geom_text(aes(label = round(Abundance/5,2)), vjust = -0.2) +
+    xlab("Transects")+
+    scale_fill_manual("Transect", values = c("darkgreen","grey"), labels = c("Control","Transplant"))
 # +
 #   geom_point(data = textp.c.f0, aes(Group, estimate*100, color = Parameter))
   
 ggsave(file = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Figures/exisitingpertreatment.jpg", fig6, width=150, height=125,units='mm', dpi=300)  
 ```
 
-
-```{r}
-pepe.all.2023 %>%
-  left_join()
-  filter(is.na(Transect_position)) %>%
-  group_by(TransectID) %>%
-  summarise(Abundance = n()) %>%
-  filter(Abundance > 0) %>%
-  ggplot(  aes(TransectID, Abundance, fill = ))+
-    geom_bar(stat = "identity")+
-    theme_bw()+
-    geom_text(aes(label = round(Abundance/5,2)), vjust = -0.2) +
-    xlab("Transects")
-  
-```
 
 
 
