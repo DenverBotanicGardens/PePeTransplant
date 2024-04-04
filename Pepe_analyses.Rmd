@@ -16,6 +16,7 @@ library(boot)
 library(dplyr)
 library(tidyr)
 library(ggplot2)
+library(patchwork)
 
 library(RMark)
 ```
@@ -50,12 +51,13 @@ pepe.transects <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservatio
 pepe.tags <- pepe.all.2023 %>%
   left_join(pepe.transects, by = c("TransectID","Block")) %>%
   select(TransectID:Block, Season:Transect_position, X,Y, Type_CT_TT) %>%
-  group_by(TransectID,Y,X,Season,Transect_position) %>%
-  summarise(PlantID = cur_group_id())
+  group_by(TransectID,Block,X,Y,Season,Transect_position) %>%
+  summarise(PlantID = cur_group_id()) %>%
+  arrange(TransectID, Block, Y, X)
 
 pepe.all.2023 <- pepe.all.2023 %>%
   select(!"PlantID") %>%
-  left_join(pepe.tags, by = c("TransectID","X","Y","Season","Transect_position"))
+  left_join(pepe.tags, by = c("TransectID","Block","X","Y","Season","Transect_position"))
 
 
 ```
@@ -289,15 +291,14 @@ textp.c.f0 <- bestmod %>%
 
 ```
 
-Confidence intervals on abundance from mark-recaptures
 ```{r}
-library(recapr)
-
 transplants <- pepe.all.2023 %>%
   left_join(pepe.transects, by = c("TransectID","Block")) %>%
   filter(!is.na(Transect_position)) %>%
   arrange(TransectID, Y, X)
 
+
+## Spring transplants
 ## plot 4 all died, plot 6 are in twice - corrected in csv
 transplants %>%
   filter(Season == "Spring") %>%
@@ -348,13 +349,17 @@ transplant_surv <- transplants %>%
   group_by(TransectID, surv) %>%
   mutate(mu = median(dbinom(surv, 5, seq(0,1, by = 0.0001))),
          lower = HDInterval::hdi(dbinom(surv, 5, seq(0,1, by = 0.0001)), credMass = 0.88)[1],
-         upper = HDInterval::hdi(dbinom(surv, 5, seq(0,1, by = 0.0001)), credMass = 0.88)[2])
+         upper = HDInterval::hdi(dbinom(surv, 5, seq(0,1, by = 0.0001)), credMass = 0.88)[2],
+         percsurv = surv/5)
+
+mean(transplant_surv$percsurv)
 
 transplant_binom <- transplants %>%
   filter(Season == "Spring") %>%
   filter(Date == "20231016") %>%
   mutate(surv = case_when(Height.cm > 0 ~ 1,
                           Height.cm == 0 ~ 0)) 
+
 
 
 
@@ -366,6 +371,12 @@ existing <- pepe.all.2023 %>%
   summarise(dens = n()/5) %>% ##sq meters
   arrange(TransectID)
 
+trans_glm <- transplant_binom %>%
+  left_join(existing, by = c("TransectID","Block")) %>%
+  replace(is.na(.), 0)
+
+lm1 <- glm(surv ~ dens, family = "binomial" , trans_glm)
+summary(lm1)
 
 #### This one!
 ggsave(file = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Figures/SpTransSurvxdensity.jpg", 
@@ -378,32 +389,71 @@ transplant_binom %>%
     theme_bw()+
     ylab("Spring transplant survival rate (May to Oct 2023)")+
     xlab("Exisiting density (Oct 2023)")
-    , width=100, height=105,units='mm', dpi=300)  
+    , width=150, height=100,units='mm', dpi=300)  
 
 existing %>%
   full_join(pepe.transects, by = c("TransectID","Block")) %>%
   filter(Type_CT_TT == "TT") %>%
   replace(is.na(.), 0) %>%
   arrange(TransectID) %>%
+  left_join(transplant_surv) %>%
+  select(TransectID:dens,OriginTagNum:End5mTagNum, surv, percsurv) %>%
   print(n=33)
 
-### Change to 0 = died, 1 = survived
-existing %>%
-  inner_join(transplants, by = "TransectID") %>%
-  filter(Season == "Spring") %>%
-  filter(Date == "20231016") %>%
-  mutate(surv = case_when(Height.cm > 0 ~ 1,
-                          Height.cm == 0 ~ 0)) %>%
-  group_by(TransectID, dens, Block) %>%
-  full_join(pepe.transects[pepe.transects$Type_CT_TT == "TT",], by = "TransectID") %>%
+## Because many died, need spring and 20230521 
+transplants %>%
+  filter(Height.cm == 0)
+transplants <- transplants %>%
+  mutate(Season = factor(Season, levels = c("Spring","Fall")))
+
+ggsave(file = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Figures/HeightWidthTransplantsXSeason.jpg", 
+(transplants %>%
+  filter(Season == "Spring" & Date == "20230531" | Season == "Fall") %>%
+  left_join(pepe.transects[pepe.transects$Type_CT_TT == "TT",], by = c("TransectID","Block")) %>%
   arrange(TransectID) %>%
-  replace(is.na(.), 0) %>%
-  ggplot( aes(dens, surv)) +
-    geom_point()+
+  ggplot(  aes(as.factor(TransectID), Height.cm, color = as.factor(Repro))) +
+    geom_boxplot(outlier.shape = NA)+
+    geom_point(position = position_dodge(width = 0.8), pch=16) +
     theme_bw() +
-    # stat_smooth(method = "glm")+
-    ylab("Survival rate of transplants")+
-    xlab("Density of existing plants")
+    facet_wrap(~Season,nrow=2)+
+    xlab("Transect")+
+    ylab("Height (cm)")+
+    scale_color_manual("Stage", values = c("darkgreen","violet"), labels = c("Vegetative","Reproductive"))
+) +
+(transplants %>%
+  filter(Season == "Spring" & Date == "20230531" | Season == "Fall") %>%
+  left_join(pepe.transects[pepe.transects$Type_CT_TT == "TT",], by = c("TransectID","Block")) %>%
+  arrange(TransectID) %>%
+  ggplot(  aes(as.factor(TransectID), BasalWidth.cm, color = as.factor(Repro))) +
+    geom_boxplot(outlier.shape = NA)+
+    geom_point(position = position_dodge(width = 0.8), pch=16) +
+    theme_bw() +
+    facet_wrap(~Season,nrow=2)+
+    xlab("Transect")+
+    ylab("Width (cm)")+
+    scale_color_manual("Stage", values = c("darkgreen","violet"), labels = c("Vegetative","Reproductive"))
+ )
+
+    , width=250, height=110,units='mm', dpi=300)  
+
+transplants %>%
+  filter(Season == "Spring" & Date == "20230531" | Season == "Fall") %>%
+  select(X:Y,TransectID:Comments.x) %>%
+  write.csv(., file = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Figures/Transplants.csv")
+
+pepe.all.2023 %>%
+  left_join(pepe.transects[pepe.transects$Type_CT_TT == "TT",], by = c("TransectID","Block")) %>%
+  select(X:Y,TransectID:Comments.x) %>%
+  write.csv(., file = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Figures/Existing.csv")
+
+```
+
+
+
+Confidence intervals on abundance from mark-recaptures
+```{r}
+
+library(recapr)
 
 ## n1 = individuals captured and marked in first sample
 n1 <- pepe.all.2023 %>%
@@ -448,18 +498,23 @@ recapt <- m2 %>%
 # Abundance
 NChapman(n1 = recapt$n1, n2 = recapt$n2, m2 = recapt$m2)
 
-ciChapman(n1 = recapt$n1[1], n2 = recapt$n2[1], m2 = recapt$m2[1])$Nhat
+for(i in 1:7){
+ print(ciChapman(n1 = recapt$n1[i], n2 = recapt$n2[i], m2 = recapt$m2[i]) )
+}
+
 
 recapt %>%
   mutate(Nhat = ciChapman(n1,n2,m2)$Nhat,
-         ciLWR = ciChapman(n1,n2,m2)$ciNorm)
+         ciLWR = ciChapman(n1,n2,m2)$ciNorm[1])
+
+
 ```
 
 
 
 ```{r}
 
-fig6 <- pepe.2023 %>%
+fig6 <- pepe.all.2023 %>%
   filter(is.na(Transect_position)) %>%
   group_by(TransectID) %>%
   summarise(Abundance = n()) %>%
