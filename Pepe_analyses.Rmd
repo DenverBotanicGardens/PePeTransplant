@@ -38,6 +38,30 @@ pepe.springfall <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservati
 
 ```
 
+
+## All the data
+```{r}
+pepe.all.2023 <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/Penstemon-penlandii_data.csv")
+
+pepe.transects <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/Penstemon-penlandii_Transects.csv")
+
+
+## existing and transplanted
+pepe.tags <- pepe.all.2023 %>%
+  left_join(pepe.transects, by = c("TransectID","Block")) %>%
+  select(TransectID:Block, Season:Transect_position, X,Y, Type_CT_TT) %>%
+  group_by(TransectID,Y,X,Season,Transect_position) %>%
+  summarise(PlantID = cur_group_id())
+
+pepe.all.2023 <- pepe.all.2023 %>%
+  select(!"PlantID") %>%
+  left_join(pepe.tags, by = c("TransectID","X","Y","Season","Transect_position"))
+
+
+```
+
+
+
 Format for datasheets
 ```{r}
 
@@ -256,12 +280,182 @@ ggplot(  aes(x = Parameter, y = estimate, color = Parameter, group = Parameter))
 
 29/nrow(pepe.2023)
 
+bestmod
+
 textp.c.f0 <- bestmod %>%
   mutate(rnam = row.names(.)) %>%
   separate(rnam, into = c("Parameter","Group","Time")) %>%
   mutate(Group = gsub( "g", "",Group))
 
 ```
+
+Confidence intervals on abundance from mark-recaptures
+```{r}
+library(recapr)
+
+transplants <- pepe.all.2023 %>%
+  left_join(pepe.transects, by = c("TransectID","Block")) %>%
+  filter(!is.na(Transect_position)) %>%
+  arrange(TransectID, Y, X)
+
+## plot 4 all died, plot 6 are in twice - corrected in csv
+transplants %>%
+  filter(Season == "Spring") %>%
+  filter(Date == "20231016") %>%
+  filter(Height.cm > 0) %>%
+  group_by(TransectID) %>%
+  summarise(surv = n()) %>%
+  full_join(pepe.transects[pepe.transects$Type_CT_TT == "TT",], by = "TransectID") %>%
+  arrange(TransectID) %>%
+  replace(is.na(.), 0) %>%
+  group_by(TransectID, surv) %>%
+  mutate(mu = median(dbinom(surv, 5, seq(0,1, by = 0.0001))),
+         lower = HDInterval::hdi(dbinom(surv, 5, seq(0,1, by = 0.0001)), credMass = 0.95)[1],
+         upper = HDInterval::hdi(dbinom(surv, 5, seq(0,1, by = 0.0001)), credMass = 0.95)[2]) %>%
+  ggplot(  aes(as.factor(TransectID), mu)) +
+    geom_point() +
+    geom_errorbar(aes(ymin = lower, ymax = upper))+
+    theme_bw() +
+    xlab("Transect")+
+    ylab("Survival rate") +
+    scale_y_continuous(labels = scales::percent)
+
+transplants %>%
+  filter(Season == "Spring") %>%
+  filter(Date == "20231016") %>%
+  filter(Height.cm > 0) %>%
+  group_by(TransectID) %>%
+  summarise(surv = n()) %>%
+  full_join(pepe.transects[pepe.transects$Type_CT_TT == "TT",], by = "TransectID") %>%
+  arrange(TransectID) %>%
+  replace(is.na(.), 0) %>%
+  ggplot(  aes(as.factor(TransectID), surv/5)) +
+    geom_point() +
+    theme_bw() +
+    xlab("Transect")+
+    ylab("Survival rate") +
+    scale_y_continuous(labels = scales::percent)
+
+transplant_surv <- transplants %>%
+  filter(Season == "Spring") %>%
+  filter(Date == "20231016") %>%
+  filter(Height.cm > 0) %>%
+  group_by(TransectID) %>%
+  summarise(surv = n()) %>%
+  full_join(pepe.transects[pepe.transects$Type_CT_TT == "TT",], by = "TransectID") %>%
+  arrange(TransectID) %>%
+  replace(is.na(.), 0) %>%
+  group_by(TransectID, surv) %>%
+  mutate(mu = median(dbinom(surv, 5, seq(0,1, by = 0.0001))),
+         lower = HDInterval::hdi(dbinom(surv, 5, seq(0,1, by = 0.0001)), credMass = 0.88)[1],
+         upper = HDInterval::hdi(dbinom(surv, 5, seq(0,1, by = 0.0001)), credMass = 0.88)[2])
+
+transplant_binom <- transplants %>%
+  filter(Season == "Spring") %>%
+  filter(Date == "20231016") %>%
+  mutate(surv = case_when(Height.cm > 0 ~ 1,
+                          Height.cm == 0 ~ 0)) 
+
+
+
+## Density of surrounding plants in plot
+existing <- pepe.all.2023 %>%
+  left_join(pepe.transects, by = c("TransectID","Block")) %>%
+  filter(is.na(Transect_position)) %>%
+  group_by(TransectID, Block) %>%
+  summarise(dens = n()/5) %>% ##sq meters
+  arrange(TransectID)
+
+
+#### This one!
+ggsave(file = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Figures/SpTransSurvxdensity.jpg", 
+transplant_binom %>%
+  left_join(existing, by = c("TransectID","Block")) %>%
+  replace(is.na(.), 0) %>%
+  ggplot(  aes(dens, surv)) +
+    geom_point(pch = "|")+
+    stat_smooth(method="glm",  method.args = list(family = "binomial"), se=TRUE)+
+    theme_bw()+
+    ylab("Spring transplant survival rate (May to Oct 2023)")+
+    xlab("Exisiting density (Oct 2023)")
+    , width=100, height=105,units='mm', dpi=300)  
+
+existing %>%
+  full_join(pepe.transects, by = c("TransectID","Block")) %>%
+  filter(Type_CT_TT == "TT") %>%
+  replace(is.na(.), 0) %>%
+  arrange(TransectID) %>%
+  print(n=33)
+
+### Change to 0 = died, 1 = survived
+existing %>%
+  inner_join(transplants, by = "TransectID") %>%
+  filter(Season == "Spring") %>%
+  filter(Date == "20231016") %>%
+  mutate(surv = case_when(Height.cm > 0 ~ 1,
+                          Height.cm == 0 ~ 0)) %>%
+  group_by(TransectID, dens, Block) %>%
+  full_join(pepe.transects[pepe.transects$Type_CT_TT == "TT",], by = "TransectID") %>%
+  arrange(TransectID) %>%
+  replace(is.na(.), 0) %>%
+  ggplot( aes(dens, surv)) +
+    geom_point()+
+    theme_bw() +
+    # stat_smooth(method = "glm")+
+    ylab("Survival rate of transplants")+
+    xlab("Density of existing plants")
+
+## n1 = individuals captured and marked in first sample
+n1 <- pepe.all.2023 %>%
+  left_join(pepe.transects, by = c("TransectID","Block")) %>%
+  filter(is.na(Transect_position)) %>%
+  filter(Type_CT_TT == "TT") %>%
+  filter(Height.cm >0) %>%
+  group_by(Date, TransectID) %>%
+  summarise(n1 = n()) %>%
+  arrange(TransectID, Date) %>%
+  filter(Date == "20230531") %>%
+  filter(TransectID != 18) 
+
+n2 <- pepe.all.2023 %>%
+  filter(is.na(Transect_position)) %>%
+  left_join(pepe.transects, by = c("TransectID","Block")) %>%
+  filter(Type_CT_TT == "TT") %>%
+  filter(Height.cm >0) %>%
+  group_by(Date, TransectID) %>%
+  summarise(n2 = n()) %>%
+  arrange(TransectID, Date) %>%
+  filter(Date == "20231016") %>%
+  filter(TransectID != 18)
+
+#
+m2 <- pepe.all.2023 %>%
+  filter(is.na(Transect_position)) %>%
+  left_join(pepe.transects, by = c("TransectID","Block")) %>%
+  filter(Type_CT_TT == "TT") %>%
+  filter(Height.cm >0) %>%
+  group_by(PlantID, TransectID, Block) %>%
+  summarize(n = n()) %>%
+  filter(n == 2) %>%
+  group_by(TransectID) %>%
+  summarise(m2 = n())
+
+recapt <- m2 %>%
+  # select(TransectID:n1) %>%
+  left_join(n1, by = "TransectID") %>%
+  left_join(n2, by = "TransectID")
+
+# Abundance
+NChapman(n1 = recapt$n1, n2 = recapt$n2, m2 = recapt$m2)
+
+ciChapman(n1 = recapt$n1[1], n2 = recapt$n2[1], m2 = recapt$m2[1])$Nhat
+
+recapt %>%
+  mutate(Nhat = ciChapman(n1,n2,m2)$Nhat,
+         ciLWR = ciChapman(n1,n2,m2)$ciNorm)
+```
+
+
 
 ```{r}
 
@@ -279,6 +473,22 @@ fig6 <- pepe.2023 %>%
 #   geom_point(data = textp.c.f0, aes(Group, estimate*100, color = Parameter))
   
 ggsave(file = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Figures/exisitingpertreatment.jpg", fig6, width=150, height=125,units='mm', dpi=300)  
+```
+
+
+```{r}
+pepe.all.2023 %>%
+  left_join()
+  filter(is.na(Transect_position)) %>%
+  group_by(TransectID) %>%
+  summarise(Abundance = n()) %>%
+  filter(Abundance > 0) %>%
+  ggplot(  aes(TransectID, Abundance, fill = ))+
+    geom_bar(stat = "identity")+
+    theme_bw()+
+    geom_text(aes(label = round(Abundance/5,2)), vjust = -0.2) +
+    xlab("Transects")
+  
 ```
 
 
@@ -530,22 +740,70 @@ panel.hist <- function(x, ...)
 }
     
 cor(pepe.rootshoot[,4:13])
+
+reg <- function(x, y, col) abline(lm(y~x), col=col) 
+
+panel.lm =  function (x, y, col = par("col"), bg = NA, pch = par("pch"), 
+    cex = 1, col.smooth = "black", span = 2/3, iter = 3, ...)  {
+    points(x, y, pch = pch, col = col, bg = bg, cex = cex)
+    ok <- is.finite(x) & is.finite(y)
+    if (any(ok)) reg(x[ok], y[ok], col.smooth)
+}
+
+
 ```
 
+levels are Trowel.Spring Bulb.Spring   Trowel.Fall   Bulb.Fall
 ```{r}
 jpeg("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Root2Shootcorr.jpg",
      width=200, height=200,units='mm', res=300)
 
-pairs(pepe.rootshoot[,c(4:5,8:12)],
-      bg = rainbow(2)[as.factor(pepe.rootshoot$Trowel.BulbPlant)],
-      # col = rainbow(2)[as.factor(pepe.rootshoot$Trowel.BulbPlant)],
+
+  # dplyr::select(c(Height, Width, Taprootlength, Taproot.diameter, Num.lateral, Length.longest, NumTertiaryRoots)) %>%
+pairs(pepe.rootshoot[,c(4:5,8:12)], # pepe.rootshoot[pepe.rootshoot$Season == "Spring",c(4:5,8:12)],
+      bg = c("blue","skyblue","darkred","pink")[unique(interaction(as.factor(pepe.rootshoot$Trowel.BulbPlant),
+                                                            as.factor(pepe.rootshoot$Season)))],
+      # bg = c("blue","darkred")[unique(pepe.rootshoot$Trowel.BulbPlant)],
       pch = 21,
+      panel = panel.lm,
       lower.panel = panel.cor,
       diag.panel = panel.hist)
-      # lower.panel = panel.smooth)
 
 dev.off()
 ```
+
+
+```{r}
+# library(GGally)
+# library(patchwork)
+
+p1 <-pepe.rootshoot %>%
+  filter(Season == "Spring") %>%
+  rename(TapLn = Taprootlength, TapDiam = Taproot.diameter, NumLat = Num.lateral,
+         LnLong = Length.longest, NumTert = NumTertiaryRoots) %>%
+ggpairs(columns = c(4,8,10:12),
+        aes(color = Trowel.BulbPlant, alpha = 0.25),
+        upper = list(continuous = wrap("cor", size = 3)),
+        lower = list(continuous = "smooth")) +
+  ggtitle("a)")+
+  theme_bw()
+
+p2 <- pepe.rootshoot %>%
+  filter(Season == "Fall") %>% 
+  rename(TapLn = Taprootlength, TapDiam = Taproot.diameter, NumLat = Num.lateral,
+         LnLong = Length.longest, NumTert = NumTertiaryRoots) %>%
+ggpairs(columns = c(4,8,10:12),
+        aes(color = Trowel.BulbPlant, alpha = 0.25),
+        upper = list(continuous = wrap("cor", size = 3)),
+        lower = list(continuous = "smooth"))+
+  ggtitle("b)")+
+  theme_bw()
+
+ggsave(file = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Figures/BulbVTrowelSpring.jpg", p1, width=150, height=150,units='mm', dpi=300)
+
+ggsave(file = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Figures/BulbVTrowelFall.jpg", p2, width=150, height=150,units='mm', dpi=300) 
+```
+
 
 
 
