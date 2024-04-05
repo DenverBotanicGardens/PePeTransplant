@@ -306,9 +306,19 @@ transplants %>%
   select(X:Y,TransectID:Comments.x) %>%
   write.csv(., file = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Figures/Transplants.csv")
 
-pepe.all.2023 %>%
-  left_join(pepe.transects[pepe.transects$Type_CT_TT == "TT",], by = c("TransectID","Block")) %>%
+transplants %>%
+  filter(Season == "Spring" & Date == "20230531" | Season == "Fall") %>%
   select(X:Y,TransectID:Comments.x) %>%
+  group_by(Season) %>%
+  summarise(meanHeight = mean(Height.cm),
+            meanWidth = mean(BasalWidth.cm),
+            percRepro = sum(Repro)/100,
+            meanFrFl = sum(NumRep))
+
+pepe.all.2023 %>%
+  filter(is.na(Transect_position)) %>%
+  left_join(pepe.transects[pepe.transects$Type_CT_TT == "TT",], by = c("TransectID","Block")) %>%
+  select(X:Y,TransectID:Block,Height.cm:Comments.x) %>%
   write.csv(., file = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Figures/Existing.csv")
 
 ```
@@ -458,7 +468,10 @@ ggplot(  aes(x = Parameter, y = estimate, color = Parameter, group = Parameter))
   geom_boxplot()+
   theme_bw()
 
-bestmod
+bestmod %>%
+  mutate(rnam = row.names(.)) %>%
+  separate(rnam, into = c("Parameter","Group","Time")) %>%
+  filter(Parameter == "f0")
 
 textp.c.f0 <- bestmod %>%
   mutate(rnam = row.names(.)) %>%
@@ -570,7 +583,7 @@ survSpring %>%
 
 
 
-
+## Root Shoot (only 2023)
 ```{r}
 pepe.rootshoot <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/2023_Penstemon-penlandii_rootshoot.csv")
 ```
@@ -580,12 +593,39 @@ pepe.rootshoot <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservatio
 pepe.rootshoot$Season <- factor(pepe.rootshoot$Season, levels = c("Spring","Fall"))
 
 # Not significant
+ggsave(file = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Figures/rootshootFig8.jpg", 
+
 ggplot(pepe.rootshoot, aes( NumTertiaryRoots,Height, color = Trowel.BulbPlant,
                             linetype = Season)) +
   geom_point() +
   stat_smooth(method = "lm") +
   theme_bw()+
-  facet_wrap(~Season)
+  xlab("Number of root hairs") +
+  facet_wrap(~Season)+
+  scale_color_manual("Method", values = c("grey60","black")) + 
+  theme(legend.position="none") +
+  
+ggplot(pepe.rootshoot, aes( NumTertiaryRoots,Width, color = Trowel.BulbPlant,
+                            linetype = Season)) +
+  geom_point() +
+  stat_smooth(method = "lm") +
+  theme_bw()+
+  xlab("Number of root hairs") +
+  facet_wrap(~Season)+
+  scale_color_manual("Method", values = c("grey60","black"))
+    , width=150*2, height=100,units='mm', dpi=300)  
+
+
+ggsave(file = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Figures/rootshootWidthFig9.jpg", 
+
+ggplot(pepe.rootshoot, aes( NumTertiaryRoots,Width, color = Trowel.BulbPlant,
+                            linetype = Season)) +
+  geom_point() +
+  stat_smooth(method = "lm") +
+  theme_bw()+
+  facet_wrap(~Season)+
+  scale_color_manual("Method", values = c("grey60","black"))
+    , width=150, height=100,units='mm', dpi=300)  
 
 ggplot(pepe.rootshoot, aes(Taproot.diameter,Height,  color = Trowel.BulbPlant)) +
   geom_point() +
