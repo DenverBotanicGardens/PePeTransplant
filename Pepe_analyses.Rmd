@@ -154,142 +154,7 @@ pepe.3surv <- pepe.3surv %>%
 
 ```
 
-Detection among transplant plots and control plots (need to add that data)     
-In manuscripts, cite this appendix for RMark and in describing it make sure to say something like “we used the R (R Development Core Team 2007) package RMark (Laake 2013) to construct models for program MARK (White and Burnham 1999).” Use citation("RMark") in R to get the proper citation for R.*
 
-```{r}
-
-## All individuals for annual 
-pepe.annual <- pepe.springfall %>%
-  mutate(IndivID = 1:nrow(pepe.springfall)) %>%
-  mutate(Date = as.Date("2023/10/17"))
-
-pepe.spring23 <- pepe.annual %>%
-  dplyr::select(c(IndivID, X, Y, TransectID:Season, Transect_position, Height.cm:Comments)) %>%
-  mutate(Date = as.Date("2023-05-31"))
-
-pepe.fall23 <- pepe.annual %>%
-  dplyr::select(c(IndivID, X, Y, TransectID:Season, Transect_position, Height.cm.1:Comments.1)) %>%
-  # mutate(across(Height.cm:NumRep), as.numeric) %>%
-  mutate(Date = as.Date("2023-10-17"))
-
-# pepe.fall23[,7:10] <- sapply(pepe.fall23[,7:10],as.numeric)
-
-names(pepe.fall23) <- names(pepe.spring23)
-
-pepe.2023 <- bind_rows(pepe.spring23, pepe.fall23)
-
-## make capture history with early and late, Cannot include the transplanted individuals  
-## Make a design matrix of groups, columns for each TransectID, 0 or 1 if in that Transect
-pepe.dm <- pepe.2023 %>%
-  filter(is.na(Transect_position)) %>%
-  filter(!is.na(Height.cm)) %>%
-  mutate(Trans01 = if_else(!is.na(Transect_position), 1, 0)) %>%
-  mutate(mark = if_else(Height.cm > 0, 1, 0)) %>%
-  dplyr::select(Date,mark,IndivID, Trans01, TransectID) %>%
-  pivot_wider(names_from = Date, names_prefix = "Survey", values_from = mark, values_fill = 0) %>%
-  unite(ch, `Survey2023-05-31`:`Survey2023-10-17`, sep="") %>%
-  mutate(TransectID = as.factor(TransectID))
-
-## separate column for each factor, no intercept
-dmTrans <- model.matrix(~ -1 + TransectID, pepe.dm)
-dmTrans <- dmTrans[,colSums(dmTrans) != 0]
-
-## Phi and p
-# dm <- cbind(dmTrans,matrix(0,nrow=nrow(pepe.dm),ncol=length(colnames(dmTrans))))
-# dm <- rbind(dm,cbind(matrix(0,nrow=nrow(pepe.dm),ncol=length(colnames(dmTrans))),dmTrans))
-# colnames(dm) <- c(paste("p:", colnames(dmTrans), sep=""),
-#                   paste("Phi:", colnames(dmTrans), sep=""))
-
-pepe.2023 %>%
-  filter(is.na(Transect_position)) %>%
-  filter(!is.na(Height.cm)) %>%
-  ## Seems to have no data for 16, 22, or 24
-  # filter(!(TransectID %in% c(16,22,24))) %>%
-  filter(TransectID != 16) %>%
-  mutate(Trans01 = if_else(!is.na(Transect_position), 1, 0)) %>%
-  mutate(mark = if_else(Height.cm > 0, 1, 0)) %>%
-  dplyr::select(Date,mark,IndivID, Trans01, TransectID) %>%
-  pivot_wider(names_from = Date, names_prefix = "Survey", values_from = mark, values_fill = 0) %>%
-  unite(ch, `Survey2023-05-31`:`Survey2023-10-17`, sep="") %>%
-  mutate(Trans10 = if_else(TransectID == 10, 1, 0)) %>%
-  mutate(Trans12 = if_else(TransectID == 12, 1, 0)) %>%
-  mutate(Trans18 = if_else(TransectID == 18, 1, 0)) %>%
-  # mutate(Trans16 = if_else(TransectID == 16, 1, 0)) %>%
-  mutate(Trans20 = if_else(TransectID == 20, 1, 0)) %>%
-  mutate(Trans22 = if_else(TransectID == 22, 1, 0)) %>%
-  mutate(Trans24 = if_else(TransectID == 24, 1, 0)) %>%
-  mutate(Trans26 = if_else(TransectID == 26, 1, 0)) %>%
-  mutate(Trans32 = if_else(TransectID == 32, 1, 0)) %>%
-  mutate(Trans34 = if_else(TransectID == 34, 1, 0)) %>%
-  mutate(Trans36 = if_else(TransectID == 36, 1, 0)) %>%
-  mutate(Trans38 = if_else(TransectID == 38, 1, 0)) %>%
-  mutate(Trans40 = if_else(TransectID == 40, "1;", "0;")) %>%
-  # bind_cols(dmTrans[,-1]) %>%
-  # mutate(TransectID40 = "TransectID40;") %>%
-  dplyr::select(c(ch:Trans40)) %>%
-  write.table( file = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/2023ExistTrans_Penstemon-penlandii.inp", sep = " ", col.names = FALSE, row.names = FALSE)
-
-transInclude <- pepe.2023 %>%
-  filter(is.na(Transect_position)) %>%
-  filter(!is.na(Height.cm)) %>%
-  # filter(!(TransectID %in% c(16,22,24))) %>%
-  filter(TransectID != 16) %>%
-  mutate(mark = if_else(Height.cm > 0, 1, 0)) %>%
-  dplyr::select(Date,mark,IndivID, TransectID) %>%
-  pivot_wider(names_from = Date, names_prefix = "Survey", values_from = mark, values_fill = 0) %>%
-  distinct(TransectID) %>%
-  mutate(TransectID = as.factor(TransectID))
-
-pepe.inp <- convert.inp("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/2023ExistTrans_Penstemon-penlandii.inp", 
-                        group.df = transInclude, covariates = NULL)
-
-
-pepe.cjs <- process.data(pepe.inp, model = "Closed", groups = "TransectID")
-pepe.ddl <- make.design.data(pepe.cjs)
-
-pepe.ddl$p$group
-pepe.ddl$c$group
-
-run.models <- function() {
-  c.dot = list(formula =~ 1)
-  c.plot = list(formula = ~TransectID)
-  p.dot = list(formula =~1)
-  p.plot = list(formula = ~TransectID)
-  f0.dot = list(formula = ~1)
-  f0.plot = list(formula = ~TransectID)
-  
-  mod.list <- create.model.list("Closed")
-  
-  results.out <- mark.wrapper(mod.list, data = pepe.cjs, ddl = pepe.ddl, output = FALSE)
-  return(results.out)
-}
-
-pepe.results <- run.models()
-
-## Model-selection table
-pepe.results
-
-bestmod <- pepe.results$p.plot.c.plot.f0.dot$results$real
-
-bestmod %>%
-  mutate(rnam = row.names(.)) %>%
-  separate(rnam, into = c("Parameter","Group","Time")) %>%
-ggplot(  aes(x = Parameter, y = estimate, color = Parameter, group = Parameter))+
-  geom_jitter()+
-  geom_boxplot()+
-  theme_bw()
-
-29/nrow(pepe.2023)
-
-bestmod
-
-textp.c.f0 <- bestmod %>%
-  mutate(rnam = row.names(.)) %>%
-  separate(rnam, into = c("Parameter","Group","Time")) %>%
-  mutate(Group = gsub( "g", "",Group))
-
-```
 
 ```{r}
 transplants <- pepe.all.2023 %>%
@@ -503,10 +368,102 @@ for(i in 1:7){
 }
 
 
-recapt %>%
-  mutate(Nhat = ciChapman(n1,n2,m2)$Nhat,
-         ciLWR = ciChapman(n1,n2,m2)$ciNorm[1])
+```
 
+
+Detection among transplant plots and control plots (need to add that data)     
+In manuscripts, cite this appendix for RMark and in describing it make sure to say something like “we used the R (R Development Core Team 2007) package RMark (Laake 2013) to construct models for program MARK (White and Burnham 1999).” Use citation("RMark") in R to get the proper citation for R.*
+
+```{r}
+
+PlantIDprobs <- c(309,1040)
+pepe.all.2023 %>%
+  filter(PlantID %in% PlantIDprobs)
+
+## make capture history with early and late, Cannot include the transplanted individuals  
+## Make a design matrix of groups, columns for each TransectID, 0 or 1 if in that Transect
+pepe.dm <- pepe.all.2023 %>%
+  filter(TransectID %in% recapt$TransectID) %>%
+  filter(is.na(Transect_position)) %>%
+  distinct(Date, TransectID, Block, PlantID, .keep_all = TRUE) %>%
+  mutate(mark = if_else(Height.cm > 0, "1", "0")) %>%
+  select(c(TransectID:Block, Date, mark, PlantID)) %>%
+  mutate(Date = as.numeric(as.factor(Date))) %>%
+  tidyr::complete(nesting(TransectID, Block, PlantID), Date, fill = list(mark = "0")) %>%
+  arrange(Date) %>%
+  pivot_wider(names_from = Date, values_from = mark, values_fill = "0", names_prefix = "Survey") %>%
+  tidyr::unite(ch, Survey1:Survey2, sep="") %>%
+  mutate(TransectID = as.factor(TransectID)) %>%
+  filter(ch != "00")
+
+## separate column for each factor, no intercept
+dmTrans <- model.matrix(~ -1 + TransectID, pepe.dm)
+
+pepe.dm %>%
+  ungroup() %>%
+  dplyr::select(c(ch)) %>%
+  bind_cols(dmTrans) %>%
+  dplyr::select(c(ch:TransectID40)) %>%
+  mutate(TransectID40 = paste(TransectID40, ";", sep = "")) %>%
+  write.table( file = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/2023ExistPePe.inp", 
+               sep = " ", col.names = FALSE, row.names = FALSE)
+
+
+transdf <- pepe.dm %>%
+  ungroup() %>%
+  dplyr::distinct(TransectID)
+
+pepeRDTrans.inp <- convert.inp("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/2023ExistPePe.inp",
+                               group.df = transdf,
+                               covariates = NULL,
+                               use.comments = FALSE)
+
+pepe.cjs <- process.data(pepeRDTrans.inp, model = "Closed", groups = "TransectID")
+pepe.ddl <- make.design.data(pepe.cjs)
+
+run.models <- function() {
+  c.dot = list(formula =~ 1)
+  c.plot = list(formula = ~TransectID)
+  p.dot = list(formula =~1)
+  p.plot = list(formula = ~TransectID)
+  f0.dot = list(formula = ~1)
+  f0.plot = list(formula = ~TransectID)
+  
+  mod.list <- create.model.list("Closed")
+  
+  results.out <- mark.wrapper(mod.list, data = pepe.cjs, ddl = pepe.ddl, output = FALSE)
+  return(results.out)
+}
+
+pepe.results <- run.models()
+
+## Model-selection table
+pepe.results
+
+pepe.results$p.plot.c.plot.f0.plot$results$derived %>%
+  bind_cols(transdf)
+pepe.results$p.dot.c.dot.f0.dot$results$derived %>%
+  bind_cols(transdf)
+
+pepe.results$p.dot.c.dot.f0.dot$results$real 
+
+
+
+bestmod <- pepe.results$p.plot.c.plot.f0.dot$results$real
+bestmod %>%
+  mutate(rnam = row.names(.)) %>%
+  separate(rnam, into = c("Parameter","Group","Time")) %>%
+ggplot(  aes(x = Parameter, y = estimate, color = Parameter, group = Parameter))+
+  geom_jitter()+
+  geom_boxplot()+
+  theme_bw()
+
+bestmod
+
+textp.c.f0 <- bestmod %>%
+  mutate(rnam = row.names(.)) %>%
+  separate(rnam, into = c("Parameter","Group","Time")) %>%
+  mutate(Group = gsub( "g", "",Group))
 
 ```
 
@@ -523,13 +480,24 @@ fig6 <- pepe.all.2023 %>%
   ggplot(  aes(TransectID, Abundance, fill = Type_CT_TT))+
     geom_bar(stat = "identity")+
     theme_bw()+
-    geom_text(aes(label = round(Abundance/5,2)), vjust = -0.2) +
+    geom_text(aes(label = round(Abundance/5,2)),vjust = 0.2,hjust = 0,
+              size = 3, angle = 90) +
     xlab("Transects")+
     scale_fill_manual("Transect", values = c("darkgreen","grey"), labels = c("Control","Transplant"))
 # +
 #   geom_point(data = textp.c.f0, aes(Group, estimate*100, color = Parameter))
+
+pepe.all.2023 %>%
+  filter(is.na(Transect_position)) %>%
+  group_by(TransectID, Block) %>%
+  summarise(Abundance = n()) %>%
+  full_join(pepe.transects, by = c("TransectID","Block")) %>%
+  mutate(Type_CT_TT = as.factor(Type_CT_TT)) %>%
+  replace(is.na(.), 0) %>%
+  group_by(Type_CT_TT) %>%
+  summarise(Density = round(mean(Abundance/5),2)) 
   
-ggsave(file = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Figures/exisitingpertreatment.jpg", fig6, width=150, height=125,units='mm', dpi=300)  
+ggsave(file = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Figures/exisitingpertreatment.jpg", fig6, width=175, height=100,units='mm', dpi=300)  
 ```
 
 
