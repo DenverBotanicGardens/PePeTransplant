@@ -57,11 +57,51 @@ pepe.tags <- pepe.all.2023 %>%
 
 pepe.all.2023 <- pepe.all.2023 %>%
   select(!"PlantID") %>%
-  left_join(pepe.tags, by = c("TransectID","Block","X","Y","Season","Transect_position"))
+  left_join(pepe.tags, by = c("TransectID","Block","X","Y","Season","Transect_position")) %>%
+  distinct(TransectID, Block, X,Y,PlantID, .keep_all = TRUE)
+  
 
 
 ```
 
+# Annual data   
+```{r}
+
+## Duplicates? Yes in Transect 16, 11 plants are repeated by plantID
+# pepe.all.2023 %>%
+#   group_by(Block, TransectID, Date, PlantID) %>%
+#   summarize(n=n()) %>%
+#   filter(n > 1) %>%
+#   group_by(TransectID) %>%
+#   summarize(n=n())
+# 
+# ## Remove duplicates
+# pepe.all.2023_nodups <- pepe.all.2023 %>%
+#   distinct(TransectID, Block, X,Y,PlantID, .keep_all = TRUE)
+# 
+# pepe.all.2023_nodups %>%
+#   group_by(Block, TransectID, Date, PlantID) %>%
+#   summarize(n=n()) %>%
+#   filter(n > 1) %>%
+#   group_by(TransectID) %>%
+#   summarize(n=n())
+# 
+# repeatIDs <- pepe.all.2023 %>%
+#   group_by(Block, TransectID, Date, PlantID, X,Y) %>%
+#   summarize(n=n()) %>%
+#   filter(n > 1) 
+# 
+# pepe.all.2023 %>%
+#   filter(PlantID %in% repeatIDs$PlantID)
+# 
+# 
+# pepe.all.2023 %>%
+#   select(c(TransectID:Height.cm,X:PlantID)) %>%
+#   arrange(Block, TransectID, Y,X) %>%
+#   group_by(TransectID, Block) %>%
+#   pivot_wider(names_from = Date, values_from = Height.cm, values_fill = 0)
+
+```
 
 
 Format for datasheets
@@ -595,8 +635,9 @@ pepe.rootshoot$Season <- factor(pepe.rootshoot$Season, levels = c("Spring","Fall
 # Not significant
 ggsave(file = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Figures/rootshootFig8.jpg", 
 
-ggplot(pepe.rootshoot, aes( NumTertiaryRoots,Height, color = Trowel.BulbPlant,
-                            linetype = Season)) +
+ggplot(pepe.rootshoot, aes( NumTertiaryRoots,Height, color = Trowel.BulbPlant
+                            #, linetype = Season
+                           )) +
   geom_point() +
   stat_smooth(method = "lm") +
   theme_bw()+
@@ -605,8 +646,9 @@ ggplot(pepe.rootshoot, aes( NumTertiaryRoots,Height, color = Trowel.BulbPlant,
   scale_color_manual("Method", values = c("grey60","black")) + 
   theme(legend.position="none") +
   
-ggplot(pepe.rootshoot, aes( NumTertiaryRoots,Width, color = Trowel.BulbPlant,
-                            linetype = Season)) +
+ggplot(pepe.rootshoot, aes( NumTertiaryRoots,Width, color = Trowel.BulbPlant
+                            # , linetype = Season
+                            )) +
   geom_point() +
   stat_smooth(method = "lm") +
   theme_bw()+
@@ -618,8 +660,9 @@ ggplot(pepe.rootshoot, aes( NumTertiaryRoots,Width, color = Trowel.BulbPlant,
 
 ggsave(file = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Figures/rootshootWidthFig9.jpg", 
 
-ggplot(pepe.rootshoot, aes( NumTertiaryRoots,Width, color = Trowel.BulbPlant,
-                            linetype = Season)) +
+ggplot(pepe.rootshoot, aes( NumTertiaryRoots,Width, color = Trowel.BulbPlant
+                            # ,linetype = Season
+                            )) +
   geom_point() +
   stat_smooth(method = "lm") +
   theme_bw()+
