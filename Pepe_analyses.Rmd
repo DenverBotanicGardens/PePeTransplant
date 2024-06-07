@@ -46,8 +46,20 @@ pepe.all.2023 <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation
 
 pepe.transects <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/Penstemon-penlandii_Transects.csv")
 
+# XY wrong for Trans10, position 3 and Trans36, position 10
+pepe.all.2023$X[pepe.all.2023$Transect_position == 3 & 
+                  pepe.all.2023$TransectID == 10 & 
+                  !is.na(pepe.all.2023$Transect_position)] <- 0.25
+
+pepe.all.2023$X[pepe.all.2023$Transect_position == 10 & 
+                  pepe.all.2023$TransectID == 36 & 
+                  !is.na(pepe.all.2023$Transect_position)] <- 0.44
+pepe.all.2023$Y[pepe.all.2023$Transect_position == 10 & 
+                  pepe.all.2023$TransectID == 36 & 
+                  !is.na(pepe.all.2023$Transect_position)] <- 4.9
 
 ## existing and transplanted
+# Add a unique ID for each plant
 pepe.tags <- pepe.all.2023 %>%
   left_join(pepe.transects, by = c("TransectID","Block")) %>%
   select(TransectID:Block, Season:Transect_position, X,Y, Type_CT_TT) %>%
@@ -64,42 +76,33 @@ pepe.all.2023 <- pepe.all.2023 %>%
 
 ```
 
+#### FIX ERRORS!!! ######
+```{r}
+
+# PlantID unique for each plant in the dataset
+# TransectID 10, position 3 repeated; transect 36, position 10
+pepe.all.2023 %>%
+  filter(!is.na(Transect_position)) %>%
+  group_by(TransectID, Block, Transect_position) %>%
+  summarise(n = n()) %>%
+  filter(n >1)
+
+
+```
+
+
+
 # Annual data   
 ```{r}
 
-## Duplicates? Yes in Transect 16, 11 plants are repeated by plantID
-# pepe.all.2023 %>%
-#   group_by(Block, TransectID, Date, PlantID) %>%
-#   summarize(n=n()) %>%
-#   filter(n > 1) %>%
-#   group_by(TransectID) %>%
-#   summarize(n=n())
-# 
-# ## Remove duplicates
-# pepe.all.2023_nodups <- pepe.all.2023 %>%
-#   distinct(TransectID, Block, X,Y,PlantID, .keep_all = TRUE)
-# 
-# pepe.all.2023_nodups %>%
-#   group_by(Block, TransectID, Date, PlantID) %>%
-#   summarize(n=n()) %>%
-#   filter(n > 1) %>%
-#   group_by(TransectID) %>%
-#   summarize(n=n())
-# 
-# repeatIDs <- pepe.all.2023 %>%
-#   group_by(Block, TransectID, Date, PlantID, X,Y) %>%
-#   summarize(n=n()) %>%
-#   filter(n > 1) 
-# 
-# pepe.all.2023 %>%
-#   filter(PlantID %in% repeatIDs$PlantID)
-# 
-# 
-# pepe.all.2023 %>%
-#   select(c(TransectID:Height.cm,X:PlantID)) %>%
-#   arrange(Block, TransectID, Y,X) %>%
-#   group_by(TransectID, Block) %>%
-#   pivot_wider(names_from = Date, values_from = Height.cm, values_fill = 0)
+pepe.all.2023 %>%
+  select(c(TransectID:Height.cm,X:PlantID)) %>%
+  mutate(Date = as.numeric(Date)) %>%
+  arrange(Block, TransectID, Y,X, Transect_position, Date) %>%
+  pivot_wider(names_from = Date, values_from = Height.cm, values_fill = 0) %>%
+  select(TransectID:PlantID, '20230531', '20231016') %>%
+  write.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/DataSheets_backup/2024PePeDatasheets.csv")
+  
 
 ```
 
