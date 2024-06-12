@@ -1,3 +1,5 @@
+# This script takes a csv file that is generated from the data selected using the longToWide.sql script and inserts rows for the headers, recordedBy, and date fields. This way the data ranges can efficiently turned into tables, which can then be opened as forms, once saved as .xlsx
+
 import pandas as pd
 
 # Load the CSV file into a DataFrame
