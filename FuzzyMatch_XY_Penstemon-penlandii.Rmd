@@ -62,16 +62,30 @@ pepe2024 <- pepe1 %>%
   filter(transectId != "transectId") %>%
   filter(Date != "") %>%
   filter(end5mTagNum != "new tag and new line") %>%
+  mutate(across(transectId:numRep_CurrentYear, as.numeric)) %>%
+         # = as.numeric(transectId),
+         # originTagNum = as.numeric(originTagNum),
+         # end5mTagNum = as.numeric(end5mTagNum),
+         # plantID = as.numeric(plantID),
+         # x = as.numeric(x),
+         # y = as.numeric(y))
   ## Fill in missing TransectID, starting and ending tag numbers, defaults to replacing missing data from top to bottom
   fill(transectId) %>%
   fill(originTagNum) %>%
   fill(end5mTagNum) 
 
 
+## Sort by Y and X within each
+checknew <- pepe2024 %>%
+  # group_by(transectId, Date, Recorded.by) %>%
+  arrange(transectId, y, x) %>%
+  mutate(newID = row_number()) %>%
+  pivot_wider(id_cols = c(transectId, originTagNum, end5mTagNum), names_from = Recorded.by, 
+              values_from = c(x:y)) 
+
 pepe2024 %>%
   ## Match X and Y within a range for new plants, enter average of X and Y as final coordinates
-  mutate(Xnew = x, Ynew = y, PlantIDnew = plantID) %>%
-  filter(plantID == "")
+  mutate(Xnew = x, Ynew = y, PlantIDnew = plantID) 
   group_by(transectID) %>%
   mutate(PlantIDnew = case_when(plantID == "" & ))
   ## Sort by PlantID and autofill the next numbers for new plants
