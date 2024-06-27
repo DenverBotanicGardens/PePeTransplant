@@ -1,0 +1,93 @@
+---
+title: "FuzzyMatch PlantIDs"
+author: "Michelle DePrenger-Levin"
+date: "2024-06-27"
+output: html_document
+---
+
+Data entry, matching for new PlantIDs
+```{r}
+
+rm(list=ls()) 
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(patchwork)
+
+
+
+```
+
+
+Read data on 2024-06-24 and 2024-06-25
+Three teams one day one; four teams on day two  
+```{r}
+
+pepe1 <- read.csv("C:/Users/deprengm/OneDrive - Denver Botanic Gardens/P drive/hackathon/PePeTransplant/20240625_penstemon-penlandii_ArichLeah_csv.csv",
+                  skip = 2,
+                  header = TRUE)
+pepe2 <- read.csv("C:/Users/deprengm/OneDrive - Denver Botanic Gardens/P drive/hackathon/PePeTransplant/20240625_penstemon-penlandii_GeenaMEDL_csv.csv",
+                  skip = 2,
+                  header = TRUE)
+pepe3 <- read.csv("C:/Users/deprengm/OneDrive - Denver Botanic Gardens/P drive/hackathon/PePeTransplant/20240625_penstemon-penlandii_Mike Bone & Stanton Schell_csv.csv",
+                  skip = 2,
+                  header = TRUE)
+pepe4 <- read.csv("C:/Users/deprengm/OneDrive - Denver Botanic Gardens/P drive/hackathon/PePeTransplant/20240625_penstemon-penlandii_Michael Guidi Brooke Washburn Syed Jalalzai_csv.csv",
+                  skip = 2,
+                  header = TRUE)
+pepe5 <- read.csv("C:/Users/deprengm/OneDrive - Denver Botanic Gardens/P drive/hackathon/PePeTransplant/20240624_penstemon-penlandii_MBoneStanton_csv.csv",
+                  skip = 2,
+                  header = TRUE)
+pepe6 <- read.csv("C:/Users/deprengm/OneDrive - Denver Botanic Gardens/P drive/hackathon/PePeTransplant/20240624_penstemon-penlandii_ArichLeah_csv.csv",
+                  skip = 2,
+                  header = TRUE)
+pepe7 <- read.csv("C:/Users/deprengm/OneDrive - Denver Botanic Gardens/P drive/hackathon/PePeTransplant/20240624_penstemon-penlandii_GeenaMEDL_csv.csv",
+                  skip = 2,
+                  header = TRUE)
+
+```
+
+
+Merge, only keep sites with data collected    
+Transect 15 is new, with new start and end
+```{r}
+
+pepe2024 <- pepe1 %>%
+  bind_rows(pepe2) %>%
+  bind_rows(pepe3) %>%
+  bind_rows(pepe4) %>%
+  bind_rows(pepe5) %>%
+  bind_rows(pepe6) %>%
+  bind_rows(pepe7) %>%
+  filter(transectId != "transectId") %>%
+  filter(Date != "") %>%
+  filter(end5mTagNum != "new tag and new line") %>%
+  ## Fill in missing TransectID, starting and ending tag numbers, defaults to replacing missing data from top to bottom
+  fill(transectId) %>%
+  fill(originTagNum) %>%
+  fill(end5mTagNum) 
+
+
+pepe2024 %>%
+  ## Match X and Y within a range for new plants, enter average of X and Y as final coordinates
+  mutate(Xnew = x, Ynew = y, PlantIDnew = plantID) %>%
+  filter(plantID == "")
+  group_by(transectID) %>%
+  mutate(PlantIDnew = case_when(plantID == "" & ))
+  ## Sort by PlantID and autofill the next numbers for new plants
+  
+
+
+```
+
+
+
+Need to match X and Y that are close to each other, group by those and then take the average for the final X and Y   
+Plot 37 was only done once but half by Stanton Schell and Syed Jalalzi and half by MEDL and Geena P. 
+```{r}
+
+
+
+
+```
+

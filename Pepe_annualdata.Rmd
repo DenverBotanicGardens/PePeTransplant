@@ -1,0 +1,279 @@
+---
+title: "Pepe Annual Data Analysis"
+author: "Michelle DePrenger-Levin"
+date: "2024-06-26"
+output: R script
+---
+
+
+2024    
+```{r}
+
+rm(list=ls()) 
+library(R2jags)
+library(runjags)
+library(mcmcplots)
+library(boot)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(patchwork)
+library(RMark)
+
+```
+
+
+
+Gimenez 2020 <https://www.youtube.com/watch?v=VR8qdNvCaGk>     
+phi(.), p(.)   
+```{r}
+
+# Likelihood
+for(i in 1:nind){
+  
+  # Define latent state at first capture
+  z[i,f[i]] <- 1  # vector of when first encounter happened, always alive when first detected
+  
+  for(t in (f[i]+1):n.occasions){  # loop over time from the second encounter onward
+    # State process
+    z[i,t] ~ dbern(phi * z[i,t-1]) # will be alive on first encounter, then Bernoulli
+    
+    # Obervation process
+    y[i,t] ~ dbern(p * z[i,t]) # true state times prob of detection
+    
+    } # t time
+  
+} # loop over all i individuals
+
+phi ~ dunif(0,1) # prior for survival
+p ~ dunif(0,1) # Prior for recapture
+
+
+
+
+```
+
+CJS phi(t), p(t)   
+```{r}
+
+# Likelihood
+for(i in 1:nind){
+  
+  # Define latent state at first capture
+  z[i,f[i]] <- 1  # vector of when first encounter happened, always alive when first detected
+  
+  for(t in (f[i]+1):n.occasions){  # loop over time from the second encounter onward
+    # State process
+    z[i,t] ~ dbern(phi[t-1] * z[i,t-1]) # will be alive on first encounter, then Bernoulli, survival for each time interval
+    
+    # Obervation process
+    y[i,t] ~ dbern(p[t-1] * z[i,t]) # true state times prob of detection, detection for each time interval
+    
+    } # t time
+  
+} # loop over all i individuals
+
+## Need prior for each occasion
+for(t in 1:n.occasions-1){
+  phi[t] ~ dunif(0,1) # prior for survival
+  p[t] ~ dunif(0,1) # Prior for recapture
+}
+
+
+
+
+```
+
+
+Differences among groups, individual covariates     
+```{r}
+
+
+# Likelihood
+for(i in 1:nind){
+  
+  # Define latent state at first capture
+  z[i,f[i]] <- 1  # vector of when first encounter happened, always alive when first detected
+  
+  for(t in (f[i]+1):n.occasions){  # loop over time from the second encounter onward
+    # State process
+    z[i,t] ~ dbern(phi[i,t-1] * z[i,t-1]) # will be alive on first encounter, then Bernoulli, survival for each time interval
+    
+    # Obervation process
+    y[i,t] ~ dbern(p[i,t-1] * z[i,t]) # true state times prob of detection, detection for each time interval
+    
+    } # t time
+  
+} # loop over all i individuals
+
+## Need prior for each occasion
+for(i in 1:nind){
+  for(t in 1:(n.occasions-1)){  # in interval from t to t+1
+    phi[i,t] ~ dunif(0,1) # prior for survival
+    p[i,t] ~ dunif(0,1) # Prior for recapture
+  }
+}
+
+```
+
+Apply constraints on parameters, phi(.), p(.)   
+```{r}
+
+# Priors and constraints 
+for(i in 1:nind){
+  for(t in 1:(n.occasions-1)){
+    phi[i,t] <- mean.phi   # not a 'mean' but a constant
+    p[i,t] <- mean.p       # not a 'mean' but a constant
+  }
+}  
+
+# Prior  
+mean.phi ~ dunif(0,1)
+mean.p ~ dunif(0,1)
+
+
+```
+
+
+
+Simulate capture-history matrix   
+```{r}
+n.occasions <- 6
+marked <- rep(50, n.occasions-1)   # Annual number of newly marked individuals
+phi <- rep(0.65, n.occasions-1)
+p <- rep(0.4, n.occasions-1)
+
+# Define matrices with survival and recapture probs
+PHI <- matrix(phi, ncol = n.occasions-1, nrow = sum(marked))
+P <- matrix(p, ncol = n.occasions-1, nrow=sum(marked))
+
+simul.cjs <- function(PHI, P, marked){
+  n.occasions <- dim(PHI)[2] + 1
+  CH <- matrix(0, ncol = n.occasions, nrow = sum(marked))
+  
+  # Define a vector with the occasion of marking
+  mark.occ <- rep(1:length(marked), marked[1:length(marked)])
+  # Fill the CH matrix 
+  for(i in 1:sum(marked)){
+    CH[i, mark.occ[i]] <- 1     # First is a 1
+    if(mark.occ[i] == n.occasions) next
+      for(t in (mark.occ[i]+1):n.occasions){
+        # Bernoulli trial for survival
+        sur <- rbinom(1,1,PHI[i,t-1])
+        if(sur==0) break   # If dead, move to next individual
+        # Bernoulli for recapture
+        rp <- rbinom(1,1,P[i,t-1])
+        if(rp==1) CH[i,t] <- 1  # If you recaptured, it gets a '1'
+      } # t
+  } # i
+return(CH)
+  }
+
+## Simulate!
+sim1 <- simul.cjs(PHI, P, marked)
+
+# Create vector with occasion of marking  
+get.first <- function(x) min(which(x != 0))
+f <- apply(sim1, 1, get.first)  ## Apply across rows
+
+
+## BUGS  
+SimulCJS <- 
+  paste("
+model {
+  
+  # Constraints
+  for(i in 1:nind){
+    for(t in 1:(n.occasions-1)){
+      phi[i,t] <- mean.phi
+      p[i,t] <- mean.p
+    }
+  }
+  
+  # Priors
+  mean.phi ~ dunif(0,1)
+  mean.p ~ dunif(0,1)
+  
+  # Likelihood
+  for(i in 1:nind){
+  
+    # Define latent state at first capture
+    z[i,f[i]] <- 1
+    for(t in (f[i]+1):n.occasions){
+    
+      # State process
+      z[i,t] ~ dbern(phi[i,t-1] * z[i, t-1])
+      
+      # Observation process
+      y[i,t] ~ dbern(p[i,t-1] * z[i,t])
+    }
+  }
+}
+
+")
+
+writeLines(SimulCJS, "SimulCJS.jags")
+
+jags.data <- list(y = sim1,
+                  f= f,
+                  nind = nrow(sim1),
+                  n.occasions = ncol(sim1))
+
+# Set 'good' initial values
+z.inits <- function(ch){
+  state <- ch
+  state[state==0] <- 1
+  get.first <- function(x){ min(which(x != 0)) }
+  f <- apply(ch, 1, get.first)
+    for(i in 1:nrow(ch)){
+      state[i, 1:f[i]] <- NA
+    }
+  return(state)
+}
+
+inits <- function(){list(mean.phi = runif(1,0,1),
+                         mean.p = runif(1,0,1),
+                         z = z.inits(sim1))}   # The latent states (alive, dead) also need initial values
+  # Could monitor the latent states (if we have missing data)
+
+parameters <- c("mean.phi","mean.p")
+
+# MCMC settings
+ni <- 1000
+nt <- 1
+nb <- 500
+nc <- 3
+
+cjs.c.c <- jags(data = jags.data,
+                inits = inits,
+                parameters.to.save = parameters,
+                model.file = "SimulCJS.jags",
+                n.chains = nc,
+                n.thin = nt,
+                n.iter = ni, n.burnin = nb,
+                working.directory = getwd())
+
+print(cjs.c.c, digits = 3)
+
+## This is around 50 minutes
+
+# save(cjs.c.c, file = )
+```
+
+Second part <https://www.youtube.com/watch?v=vYWj50Sj-q4>  
+Random time effects
+```{r}
+
+n.occasions >- 12
+marked <- rep(50, n.occasions-1)  ## Annual number of newly marked individuals
+mean.phi <- 0.65
+sigma2.phi <- 1
+p <- rep(0.4, n.occasions-1)
+
+## Annual survival probabilities on logistic scale
+logit.phi <- rnorm(n.occasions-1, qlogis(mean.phi), sigma2.phi^0.5)
+logit.phi
+phi <- plogis(logit.phi)
+phi
+```
+
