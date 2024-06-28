@@ -72,15 +72,27 @@ pepe2024 <- pepe1 %>%
   ## Fill in missing TransectID, starting and ending tag numbers, defaults to replacing missing data from top to bottom
   fill(transectId) %>%
   fill(originTagNum) %>%
-  fill(end5mTagNum) 
+  fill(end5mTagNum) %>%
+  filter(!(transectId == 1 & Recorded.by == "Geena Poulter, Michelle DePrenger-Levin"))
+
+
+## Loop across anything without a plantID, look at first row, find within +/-, do max plantID+1
+for(i in 1:nrow(pepe2024)){
+  if(is.na(pepe2024$plantID[i])){
+    for(n in which(is.na(pepe2024$plantID)) )
+  } # end if statement with new plant
+}
 
 
 ## Sort by Y and X within each
 checknew <- pepe2024 %>%
-  # group_by(transectId, Date, Recorded.by) %>%
   arrange(transectId, y, x) %>%
-  mutate(newID = row_number()) %>%
-  pivot_wider(id_cols = c(transectId, originTagNum, end5mTagNum), names_from = Recorded.by, 
+  group_by(transectId, Date, Recorded.by) %>%
+  summarise(max(plantID, na.rm = TRUE))
+  ### Use plantID; when new (no plantID) then add a number to each team's records, see if in order they match
+  mutate(newID = case_when(!is.na(plantID) ~ plantID,
+                           is.na(plantID) ~ seq(from = max(plantID, na.rm = TRUE), to = length(is.na(plantID))))) %>%  
+  pivot_wider(id_cols = c(transectId, originTagNum, end5mTagNum, newID), names_from = Recorded.by, 
               values_from = c(x:y)) 
 
 pepe2024 %>%
