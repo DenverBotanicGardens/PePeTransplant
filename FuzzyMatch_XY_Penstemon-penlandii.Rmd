@@ -73,27 +73,68 @@ pepe2024 <- pepe1 %>%
   fill(transectId) %>%
   fill(originTagNum) %>%
   fill(end5mTagNum) %>%
-  filter(!(transectId == 1 & Recorded.by == "Geena Poulter, Michelle DePrenger-Levin"))
+  filter(!(transectId == 1 & Recorded.by == "Geena Poulter, Michelle DePrenger-Levin")) 
 
+## A few errors
+pepe2024 %>%
+  filter(is.na(x))
+
+## Add a dummy X for the one record
+rownum <- which(is.na(pepe2024$x) & !is.na(pepe2024$height_CurrentYear))
+pepe2024$notes_CurrentYear[is.na(pepe2024$x) & !is.na(pepe2024$height_CurrentYear)] <- "Missing X, added placeholder 0.5"
+pepe2024$x[is.na(pepe2024$x) & !is.na(pepe2024$height_CurrentYear)] <- 0.5
+pepe2024[rownum,]
+
+pepe2024 <- pepe2024 %>%
+  filter(!is.na(x))
+## Check Y
+pepe2024 %>%
+  filter(is.na(y))
 
 ## Loop across anything without a plantID, look at first row, find within +/-, do max plantID+1
 for(i in 1:nrow(pepe2024)){
+  
+  seenbyboth <- FALSE
+  
   if(is.na(pepe2024$plantID[i])){
-    for(n in which(is.na(pepe2024$plantID)) )
+    NAs <- which(is.na(pepe2024$plantID))
+    
+    ### Until you get to the last one
+    if(length(NAs) > 1) {
+      for(n in 2:length(NAs)){
+        if(pepe2024$transectId[i] == pepe2024$transectId[NAs[n]] &
+           ## absolute value of the difference between them x < 0.05; y < 0.03
+           abs(pepe2024$x[i] - pepe2024$x[NAs[n]]) < 0.05 &
+           abs(pepe2024$y[i] - pepe2024$y[NAs[n]]) < 0.03 & 
+           pepe2024$Recorded.by[i] != pepe2024$Recorded.by[NAs[n]]){
+          
+          pepe2024$plantID[i] <- pepe2024$plantID[NAs[n]] <- (max(pepe2024$plantID, na.rm = TRUE) + 1)
+          seenbyboth <- TRUE
+          
+          } # end matching if statement
+      } # for loop checking for matches among other records
+      
+      ## If only seen by one, then assign unique plantid
+      if(!seenbyboth)  pepe2024$plantID[i] <- (max(pepe2024$plantID, na.rm = TRUE) + 1)
+      
+      # Up to the last one, when nothing to compare to, then give next plantID number
+      } else {
+      pepe2024$plantID[i] <- (max(pepe2024$plantID, na.rm = TRUE) + 1) 
+      }
+    
   } # end if statement with new plant
-}
-
+} # end loop through all records
 
 ## Sort by Y and X within each
 checknew <- pepe2024 %>%
   arrange(transectId, y, x) %>%
   group_by(transectId, Date, Recorded.by) %>%
-  summarise(max(plantID, na.rm = TRUE))
-  ### Use plantID; when new (no plantID) then add a number to each team's records, see if in order they match
-  mutate(newID = case_when(!is.na(plantID) ~ plantID,
-                           is.na(plantID) ~ seq(from = max(plantID, na.rm = TRUE), to = length(is.na(plantID))))) %>%  
-  pivot_wider(id_cols = c(transectId, originTagNum, end5mTagNum, newID), names_from = Recorded.by, 
-              values_from = c(x:y)) 
+  pivot_wider(id_cols = c(transectId, originTagNum, end5mTagNum, plantID), names_from = Recorded.by, 
+              values_from = c(x:y),
+              values_fn = function(x) paste(x, collapse = "; ")) 
+
+checknew %>%
+  write.csv("C:/Users/deprengm/OneDrive - Denver Botanic Gardens/P drive/hackathon/PePeTransplant/checkMatchingXY.csv")
 
 pepe2024 %>%
   ## Match X and Y within a range for new plants, enter average of X and Y as final coordinates
