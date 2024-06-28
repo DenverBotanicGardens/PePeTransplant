@@ -63,12 +63,6 @@ pepe2024 <- pepe1 %>%
   filter(Date != "") %>%
   filter(end5mTagNum != "new tag and new line") %>%
   mutate(across(transectId:numRep_CurrentYear, as.numeric)) %>%
-         # = as.numeric(transectId),
-         # originTagNum = as.numeric(originTagNum),
-         # end5mTagNum = as.numeric(end5mTagNum),
-         # plantID = as.numeric(plantID),
-         # x = as.numeric(x),
-         # y = as.numeric(y))
   ## Fill in missing TransectID, starting and ending tag numbers, defaults to replacing missing data from top to bottom
   fill(transectId) %>%
   fill(originTagNum) %>%
@@ -91,9 +85,17 @@ pepe2024 <- pepe2024 %>%
 pepe2024 %>%
   filter(is.na(y))
 
+## Double observations for transectID 40 for Geena and Michelle - lumping a transplant (0.75, 2.75) with another
+## PlantID incrementing failed. We're the only group that measured these two plots. Still assigning multiple plants to the same PlantID
+pepe2024 %>%
+  filter(transectId == 40)
+pepe2024 %>%
+  filter(transectId == 25)
+
 ## Loop across anything without a plantID, look at first row, find within +/-, do max plantID+1
 for(i in 1:nrow(pepe2024)){
   
+  ## Double observer for some plots, some plants can be missed by one observer
   seenbyboth <- FALSE
   
   if(is.na(pepe2024$plantID[i])){
@@ -125,7 +127,10 @@ for(i in 1:nrow(pepe2024)){
   } # end if statement with new plant
 } # end loop through all records
 
-## Sort by Y and X within each
+### Need to fix the duplicate 
+
+
+## Sort by Y and X within each transect, see that double observations make sense, same plant
 checknew <- pepe2024 %>%
   arrange(transectId, y, x) %>%
   group_by(transectId, Date, Recorded.by) %>%
@@ -137,24 +142,18 @@ checknew %>%
   write.csv("C:/Users/deprengm/OneDrive - Denver Botanic Gardens/P drive/hackathon/PePeTransplant/checkMatchingXY.csv")
 
 pepe2024 %>%
-  ## Match X and Y within a range for new plants, enter average of X and Y as final coordinates
-  mutate(Xnew = x, Ynew = y, PlantIDnew = plantID) 
-  group_by(transectID) %>%
-  mutate(PlantIDnew = case_when(plantID == "" & ))
-  ## Sort by PlantID and autofill the next numbers for new plants
-  
-
-
+  write.csv("C:/Users/deprengm/OneDrive - Denver Botanic Gardens/P drive/hackathon/PePeTransplant/Pepe_2024data.csv")
 ```
 
 
-
-Need to match X and Y that are close to each other, group by those and then take the average for the final X and Y   
+  
 Plot 37 was only done once but half by Stanton Schell and Syed Jalalzi and half by MEDL and Geena P. 
 ```{r}
 
+pepe2 %>%
+  filter(transectId %in% c(40,25))
 
-
+## plantID 590 is repeated in the original spreadsheet
 
 ```
 
