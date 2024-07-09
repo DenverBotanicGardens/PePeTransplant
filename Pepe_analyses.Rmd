@@ -46,6 +46,15 @@ pepe.all.2023 <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation
 
 pepe.transects <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/Penstemon-penlandii_Transects.csv")
 
+
+## Add the pepe.springfall fall repeat data of all the spring transplants
+falltomerge <- pepe.springfall %>%
+  left_join(pepe.transects) %>%
+  select(c(TransectID, Block, Season, Transect_position, PlantID,Date,  Height.cm.1, BasalWidth.cm.1, Repro.1, NumRep.1, Comments.1, X, Y)) 
+
+names(falltomerge) <- names(pepe.all.2023)
+falltomerge$Date <- 20231016
+
 # XY wrong for Trans10, position 3 and Trans36, position 10
 pepe.all.2023$X[pepe.all.2023$Transect_position == 3 & 
                   pepe.all.2023$TransectID == 10 & 
@@ -57,57 +66,124 @@ pepe.all.2023$X[pepe.all.2023$Transect_position == 10 &
 pepe.all.2023$Y[pepe.all.2023$Transect_position == 10 & 
                   pepe.all.2023$TransectID == 36 & 
                   !is.na(pepe.all.2023$Transect_position)] <- 4.9
+pepe.all.2023$Y[pepe.all.2023$Transect_position == 9 & 
+                  pepe.all.2023$TransectID == 12 & 
+                  !is.na(pepe.all.2023$Transect_position)] <- 4.25
+
+pepe.all.2023$Y[pepe.all.2023$Transect_position == 4 & 
+                  pepe.all.2023$TransectID == 14 & 
+                  !is.na(pepe.all.2023$Transect_position)] <- 2.55
+pepe.all.2023$Y[pepe.all.2023$Transect_position == 9 & 
+                  pepe.all.2023$TransectID == 18 & 
+                  !is.na(pepe.all.2023$Transect_position)] <- 4.75
+
+pepe.all.2023$Y[pepe.all.2023$Transect_position == 10 & 
+                  pepe.all.2023$TransectID == 32 & 
+                  !is.na(pepe.all.2023$Transect_position)] <- 4.45
+
+
+pepe.all.2023$X[pepe.all.2023$Transect_position == 6 & 
+                  pepe.all.2023$TransectID == 36 & 
+                  !is.na(pepe.all.2023$Transect_position)] <- 0.60
+pepe.all.2023$Y[pepe.all.2023$Transect_position == 6 & 
+                  pepe.all.2023$TransectID == 36 & 
+                  !is.na(pepe.all.2023$Transect_position)] <- 2.75
+
+
 
 ## existing and transplanted
 # Add a unique ID for each plant
+# Has only one observation per plant
 pepe.tags <- pepe.all.2023 %>%
   left_join(pepe.transects, by = c("TransectID","Block")) %>%
   select(TransectID:Block, Season:Transect_position, X,Y, Type_CT_TT) %>%
-  group_by(TransectID,Block,X,Y,Season,Transect_position) %>%
+  group_by(TransectID,Block,Season, Transect_position,X,Y) %>% #,Season,Transect_position) %>%
   summarise(PlantID = cur_group_id()) %>%
   arrange(TransectID, Block, Y, X)
 
-pepe.all.2023 <- pepe.all.2023 %>%
-  select(!"PlantID") %>%
-  left_join(pepe.tags, by = c("TransectID","Block","X","Y","Season","Transect_position")) %>%
-  distinct(TransectID, Block, X,Y,PlantID, .keep_all = TRUE)
+# Correctly gave each plant an ID number
+pepe.tags %>%
+  group_by(PlantID) %>%
+  summarise(n = n()) %>%
+  filter(n > 1)
+
+## Save 'tags' for MySQL  
+# write.csv(pepe.tags, file = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/Penstemon-penlandii_tags_MySQL.csv")
+
+
+## Save 'tags' for MySQL with Season and Transect_position  
+write.csv(pepe.tags, file = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/Penstemon-penlandii_tags_MySQL_season&position.csv")
   
 
+## Backup datasheets to print
+pepe.datasheets <- pepe.all.2023 %>%
+  left_join(pepe.transects, by = c("TransectID","Block")) %>%
+  select(TransectID:Block, Height.cm, Transect_position, X,Y) %>%
+  arrange(TransectID, Block, Y, X) 
+
+write.csv(pepe.datasheets, file = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/Penstemon-penlandii_datasheets.csv")
+
+
+
+pepe.all.2023v2 <- pepe.all.2023 %>%
+  # bind_rows(falltomerge) %>%
+  select(!"PlantID") %>% 
+  left_join(pepe.tags) 
+# %>% #, by = c("TransectID","Block","PlantID", "X","Y","Season","Transect_position")) %>%
+#   distinct(TransectID, Block, X,Y, #PlantID,
+#            .keep_all = TRUE)
+  
+pepe.all.2023v2 %>%
+  filter(is.na(PlantID))
+
 
 ```
-
-#### FIX ERRORS!!! ######
-```{r}
-
-# PlantID unique for each plant in the dataset
-# TransectID 10, position 3 repeated; transect 36, position 10
-pepe.all.2023 %>%
-  filter(!is.na(Transect_position)) %>%
-  group_by(TransectID, Block, Transect_position) %>%
-  summarise(n = n()) %>%
-  filter(n >1)
-
-
-```
-
 
 
 # Annual data   
 ```{r}
 
-pepe.all.2023 %>%
+
+### Save a list of data for each occurrence (1st or second and date) for double observer 
+# need PlantID, Height, BasalWidth, FlYN, NumFlFr, comments, observer, date  
+## Observer should be the one finding and measuring the plants. Setting to MEDL for 2023 as place holder, can enter real observers for all later
+pepe.all.2023v2 %>%
+  select(c(PlantID, Date:Comments)) %>%
+  mutate(Observer = "Michelle DePrenger-Levin") %>%
+  write.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/Penstemon-penlandii_data_MySQL.csv")
+  
+
+
+spring2fall2023 <- pepe.all.2023 %>%
+  filter(Season == "Spring") %>%
+  pivot_wider(id_cols = c(TransectID, Block, Season, Transect_position, X,Y, PlantID), 
+                          names_from = Date, values_from = Height.cm,  names_prefix = "Height") %>%
+  select(TransectID:PlantID, Height20230531, Height20231016)
+
+
+pepe.all.2023v2 %>%
+  # select(c(TransectID:Height.cm,X:PlantID)) %>%
+  mutate(Date = as.numeric(Date)) %>%
+  arrange(Block, TransectID, Y,X, Transect_position, Date) %>%
+  pivot_wider(id_cols = c(TransectID, Block, Season, Transect_position, X,Y, PlantID), 
+                          names_from = Date, values_from = Height.cm,  names_prefix = "Height") %>% # , values_fill = 0
+  # pivot_wider(names_from = Date, values_from = c(Height.cm, BasalWidth.cm, Repro, NumRep, Comments), values_fill = 0) %>%
+  select(TransectID:PlantID, Height20230531, Height20231016) %>%
+  write.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/DataSheets_backup/2024PePeDatasheets.csv")
+  
+
+pepe.all.2023v2 %>%
   select(c(TransectID:Height.cm,X:PlantID)) %>%
   mutate(Date = as.numeric(Date)) %>%
   arrange(Block, TransectID, Y,X, Transect_position, Date) %>%
-  pivot_wider(names_from = Date, values_from = Height.cm, values_fill = 0) %>%
-  select(TransectID:PlantID, '20230531', '20231016') %>%
-  write.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/DataSheets_backup/2024PePeDatasheets.csv")
-  
+  pivot_wider(names_from = Date, values_from = Height.cm, names_prefix = "Date") %>% # values_fill = 0) %>%
+  filter(!is.na(Transect_position)) %>%
+  filter(Season == "Spring" & !is.na(Date20231016))
 
 ```
 
 
-Format for datasheets
+Format for datasheets (2023)
 ```{r}
 
 
