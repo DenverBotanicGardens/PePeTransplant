@@ -38,7 +38,7 @@ names(trans2024) <- c("TransectID","transectID","Block","ControlORTreatment","Or
 # plants2024 <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/20240708_dbExport/20240708_dbExport_pepe_triState_plants.csv")
 
 plants2024 <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/Penstemon-penlandii_tags_MySQL_season&position.csv")
-names(plants2024) <- c("id", "transectID", "Block", "Season", "Transect_position", "X", "Y", "plantID")
+names(plants2024) <- c("id", "transectID", "Block", "Season", "Transect_position", "X", "Y", "Type","plantID")
 
 data2024 <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/20240708_dbExport/20240708_dbExport_pepe_triState_data.csv")
 
@@ -46,6 +46,161 @@ surv2023_2024 <- data2024 %>%
   right_join(plants2024, by = "plantID")
 
 
+
+```
+
+# Survival   
+```{r}
+
+
+
+# combine the 2024 dates, shouldn't be different by date, should be different by recorded by
+surv_wide <- surv2023_2024 %>%
+  mutate(date = case_when(date == "2024-06-25" ~ "2024-06-24",
+                          TRUE ~ date)) %>%
+  mutate(Date = as.Date(date)) %>%
+  arrange(Date) %>%
+  pivot_wider(names_from = c(Date, recordedBy),
+              values_from = heightInCentimeters,
+              id_cols = c(plantID,Season,transectID, Block) 
+               ,values_fn = first  ## Because why? why are there double for the same date and observers?
+              ) %>%
+  arrange(transectID,Block,Season)
+
+surv_wide %>%
+  filter(Season %in% c("Spring","Fall")) 
+
+## After a few more years of data, might be useful. Not sure why the line for first set of Spring isn't at 1
+surv2023_2024 %>%
+  filter(Season %in% c("Spring", "Fall")) %>%  
+  mutate(Date = as.Date(date)) %>%
+  arrange(Date) %>%
+  mutate(surv = case_when(heightInCentimeters > 0 ~ 1,
+                          heightInCentimeters == 0 ~ 0)) %>%
+  filter(!(Season == "Fall" & Date == "2023-05-31")) %>%
+  ggplot(  aes(Date, surv, color = Season)) +
+    geom_point(pch = "|")+
+    geom_smooth(method = "glm", 
+                method.args = list(family = "binomial"), 
+                se = TRUE) +
+    scale_color_manual(values = c("darkgreen","violet"))
+
+
+surv2023_2024 %>%
+  filter(Season %in% c("Spring", "Fall")) %>%  
+  mutate(Date = as.Date(date)) %>%
+  arrange(Date) %>%
+  mutate(surv = case_when(heightInCentimeters > 0 ~ 1,
+                          heightInCentimeters == 0 ~ 0)) %>%
+  filter(!(Season == "Fall" & Date == "2023-05-31")) %>%
+  mutate(date = case_when(date == "2024-06-25" ~ "2024-06-24",
+                          TRUE ~ date)) %>%
+  filter(date == "2024-06-24") %>%
+  ggplot(  aes(transectID, surv, color = Season)) +
+    geom_point(pch = "|")+
+    geom_smooth(method = "glm", 
+                method.args = list(family = "binomial"), 
+                se = TRUE) +
+    scale_color_manual(values = c("darkgreen","violet")) +
+    theme_bw()
+
+surv2023_2024 %>%
+  filter(Season %in% c("Spring", "Fall")) %>%  
+  mutate(Date = as.Date(date)) %>%
+  arrange(Date) %>%
+  mutate(surv = case_when(heightInCentimeters > 0 ~ 1,
+                          heightInCentimeters == 0 ~ 0)) %>%
+  filter(!(Season == "Fall" & Date == "2023-05-31")) %>%
+  mutate(date = case_when(date == "2024-06-25" ~ "2024-06-24",
+                          TRUE ~ date)) %>%
+  filter(date == "2024-06-24") %>%
+  ggplot(  aes(transectID, surv)) +
+    geom_point(pch = "|")+
+    geom_smooth(method = "glm", 
+                method.args = list(family = "binomial"), 
+                se = TRUE) +
+    theme_bw()
+
+## Survival depend on size or reproduction?
+
+surv2023_2024 %>%
+  filter(Season %in% c("Spring", "Fall")) %>%  
+  mutate(InitialHeight = case_when(Season=="Spring" & date ==  "2023-05-31" ~ heightInCentimeters,
+                                   Season=="Fall" & date == "2023-10-16" ~ heightInCentimeters)) %>%
+  mutate(surv = case_when(heightInCentimeters > 0 ~ 1,
+                          heightInCentimeters == 0 ~ 0)) %>%
+  filter(!(Season == "Fall" & date == "2023-05-31")) %>%
+  mutate(date = case_when(date == "2024-06-25" ~ "2024-06-24",
+                          TRUE ~ date)) %>%
+  filter(date == "2024-06-24") %>%
+  ggplot(  aes(InitialHeight, surv)) +
+    geom_point(pch = "|")+
+    geom_smooth(method = "glm", 
+                method.args = list(family = "binomial"), 
+                se = TRUE) +
+    theme_bw()
+
+## Need initial height
+surv_wide_perfectdetection <- surv2023_2024 %>%
+  mutate(date = case_when(date == "2024-06-25" ~ "2024-06-24",
+                          TRUE ~ date)) %>%
+  mutate(Date = as.Date(date)) %>%
+  arrange(Date) %>%
+  mutate(date2 = gsub("[[:punct:]]", "", surv2023_2024$date))  %>%
+  pivot_wider(names_from = c(date2),
+              values_from = heightInCentimeters,
+              id_cols = c(plantID,Season,transectID, Block),
+              names_prefix = "Date",
+               ,values_fn = function(x) max(x,na.rm = TRUE)  ## Because why? why are there double for the same date and observers?
+              ) %>%
+  arrange(transectID,Block,Season) %>%
+  mutate(InitialHeight = case_when(Season == "Spring" ~ Date20230531,
+                                   Season == "Fall" ~ Date20231016))
+
+## What?!?! Now there are more measurements for fall in the spring! that's wrong!!! 
+surv_wide_perfectdetection %>%
+  filter(Season %in% c("Spring","Fall")) %>%
+  filter(Season == "Fall" & !is.na(Date20230531))
+
+surv_wide_perfectdetection %>%
+  filter(Season %in% c("Fall","Spring")) %>%
+  mutate(surv = case_when('2024-06-24' > 0 ~ 1,
+                          '2024-06-24' == 0 ~ 0)) %>%
+  group_by(transectID, Block, Season) %>%
+  summarise(percSurv = sum(surv)/5)
+  ggplot(  aes(Season, surv))
+
+```
+
+
+
+## Survival by transplant time  
+```{r}
+
+surv_transplants <- surv2023_2024 %>%
+  filter(Season %in% c("Spring", "Fall")) %>%  
+  mutate(InitialHeight = case_when(Season=="Spring" ~ heightInCentimeters[date == "2023-05-31"],
+                                   Season=="Fall" ~ heightInCentimeters[date == "2023-10-16"])) %>%
+  mutate(Date = as.Date(date)) %>%
+  arrange(Date) %>%
+  mutate(surv = case_when(heightInCentimeters > 0 ~ 1,
+                          heightInCentimeters == 0 ~ 0)) %>%
+  filter()
+
+
+glm.season <- glm()
+
+
+
+glm.list <- list(brnull,br1a,br2,br3,br1b,br1,br2a, br3a)
+glm.names <- as.character(unlist(lapply(glm.list,formula)))
+(glm.results <- aictab(glm.list, modnames=glm.names))
+
+```
+
+
+### Run with rmark  
+```{r}
 
 ```
 
