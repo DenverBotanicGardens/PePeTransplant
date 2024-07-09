@@ -20,6 +20,8 @@ library(ggplot2)
 library(patchwork)
 library(RMark)
 
+library(myClim)
+
 ```
 
 
@@ -40,9 +42,8 @@ names(plants2024) <- c("id", "transectID", "Block", "Season", "Transect_position
 
 data2024 <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/20240708_dbExport/20240708_dbExport_pepe_triState_data.csv")
 
-data2024 %>%
-  right_join(plants2024, by = "plantID") %>%
-  filter(Season == "Spring")
+surv2023_2024 <- data2024 %>%
+  right_join(plants2024, by = "plantID")
 
 
 
@@ -50,6 +51,9 @@ data2024 %>%
 
 
 
+
+
+### Examples for true models
 
 Gimenez 2020 <https://www.youtube.com/watch?v=VR8qdNvCaGk>     
 phi(.), p(.)   
@@ -287,6 +291,8 @@ print(cjs.c.c, digits = 3)
 # save(cjs.c.c, file = )
 ```
 
+
+
 Second part <https://www.youtube.com/watch?v=vYWj50Sj-q4>  
 Random time effects
 ```{r}
@@ -307,3 +313,24 @@ phi
 
 https://www.youtube.com/watch?v=vYWj50Sj-q4 
 stopped at Minute 29
+
+
+
+Tomst data logger  
+Put in issue on GitHub
+```{r}
+
+# install.packages("myClim")
+
+
+tms.f <- mc_read_files(c("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_lolly_TOMSTdatalogger/data_95135950_2024_06_24_0.csv",
+                         "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_lolly_TOMSTdatalogger/data_95135951_2024_06_24_0.csv",
+                         "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_lolly_TOMSTdatalogger/data_95135952_2024_06_24_0.csv"),
+                       dataformat_name = "TOMST", silent = TRUE)
+
+
+tms.fs <- mc_read_files(paths = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_lolly_TOMSTdatalogger",
+                        dataformat_name = "TOMST")
+
+```
+
