@@ -24,18 +24,18 @@ library(RMark)
 
 
 ```{r}
-pepe.spring <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/2023Spring_Penstemon-penlandii.csv")
+pepe.spring <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/2023_Penstemon-penlandii_Annualreport/2023Spring_Penstemon-penlandii.csv")
 
-pepe.fall <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/20231016Fall_Penstemon-penlandii_dataentry_2.csv")
+pepe.fall <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/2023_Penstemon-penlandii_Annualreport/20231016Fall_Penstemon-penlandii_dataentry_2.csv")
 
 ## need to confirm 
-pepe.20230626 <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/20230626Spring_Penstemon-penlandii.csv")
+pepe.20230626 <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/2023_Penstemon-penlandii_Annualreport/20230626Spring_Penstemon-penlandii.csv")
 
 ## Need control plot data
-pepe.20231016_control <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/20231016_ControlTransects_dataentry.csv")
+pepe.20231016_control <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/2023_Penstemon-penlandii_Annualreport/20231016_ControlTransects_dataentry.csv")
 
 ## Data from Fall 2023-10-16 and 2320-10-17 
-pepe.springfall <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/20231016Spring_Penstemon-penlandii_fall.csv")
+pepe.springfall <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/2023_Penstemon-penlandii_Annualreport/20231016Spring_Penstemon-penlandii_fall.csv")
 
 ```
 
@@ -97,8 +97,9 @@ pepe.all.2023$Y[pepe.all.2023$Transect_position == 6 &
 pepe.tags <- pepe.all.2023 %>%
   left_join(pepe.transects, by = c("TransectID","Block")) %>%
   select(TransectID:Block, Season:Transect_position, X,Y, Type_CT_TT) %>%
-  group_by(TransectID,Block,Season, Transect_position,X,Y) %>% #,Season,Transect_position) %>%
+  group_by(TransectID,Block,X,Y) %>% #,Season,Transect_position) %>%
   summarise(PlantID = cur_group_id()) %>%
+  # mutate(PlantID = cur_group_id()) %>%
   arrange(TransectID, Block, Y, X)
 
 # Correctly gave each plant an ID number
@@ -111,8 +112,19 @@ pepe.tags %>%
 # write.csv(pepe.tags, file = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/Penstemon-penlandii_tags_MySQL.csv")
 
 
+tags_MySQL <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/Penstemon-penlandii_tags_MySQL.csv")
+
+tags_MySQL %>%
+  left_join(pepe.all.2023, by = c("TransectID", "Block", "X", "Y")) %>%
+  select(X.1:Transect_position) %>%
+  rename(PlantID = PlantID.x) %>%
+  rename(id = X.1) %>%
+  rename(x = X) %>%
+  rename(y = Y) %>%
+  write.csv(  file = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/Penstemon-penlandii_tags_MySQL_season&position.csv")
+
 ## Save 'tags' for MySQL with Season and Transect_position  
-write.csv(pepe.tags, file = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/Penstemon-penlandii_tags_MySQL_season&position.csv")
+# write.csv(pepe.tags, file = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/Penstemon-penlandii_tags_MySQL_season&position.csv")
   
 
 ## Backup datasheets to print
