@@ -60,28 +60,35 @@ pepe.all.2023$X[pepe.all.2023$Transect_position == 3 &
                   pepe.all.2023$TransectID == 10 & 
                   !is.na(pepe.all.2023$Transect_position)] <- 0.25
 
+# 2
 pepe.all.2023$X[pepe.all.2023$Transect_position == 10 & 
                   pepe.all.2023$TransectID == 36 & 
                   !is.na(pepe.all.2023$Transect_position)] <- 0.44
 pepe.all.2023$Y[pepe.all.2023$Transect_position == 10 & 
                   pepe.all.2023$TransectID == 36 & 
                   !is.na(pepe.all.2023$Transect_position)] <- 4.9
+
+# 3
 pepe.all.2023$Y[pepe.all.2023$Transect_position == 9 & 
                   pepe.all.2023$TransectID == 12 & 
                   !is.na(pepe.all.2023$Transect_position)] <- 4.25
 
+# 4
 pepe.all.2023$Y[pepe.all.2023$Transect_position == 4 & 
                   pepe.all.2023$TransectID == 14 & 
                   !is.na(pepe.all.2023$Transect_position)] <- 2.55
+
+# 5
 pepe.all.2023$Y[pepe.all.2023$Transect_position == 9 & 
                   pepe.all.2023$TransectID == 18 & 
                   !is.na(pepe.all.2023$Transect_position)] <- 4.75
 
+# 6
 pepe.all.2023$Y[pepe.all.2023$Transect_position == 10 & 
                   pepe.all.2023$TransectID == 32 & 
                   !is.na(pepe.all.2023$Transect_position)] <- 4.45
 
-
+# 7
 pepe.all.2023$X[pepe.all.2023$Transect_position == 6 & 
                   pepe.all.2023$TransectID == 36 & 
                   !is.na(pepe.all.2023$Transect_position)] <- 0.60
@@ -89,6 +96,9 @@ pepe.all.2023$Y[pepe.all.2023$Transect_position == 6 &
                   pepe.all.2023$TransectID == 36 & 
                   !is.na(pepe.all.2023$Transect_position)] <- 2.75
 
+# 8
+pepe.all.2023$Y[pepe.all.2023$Transect_position == 8 &
+                  pepe.all.2023$TransectID == 8] <- c(3.75,3.75)
 
 
 ## existing and transplanted
@@ -114,13 +124,88 @@ pepe.tags %>%
 
 tags_MySQL <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/Penstemon-penlandii_tags_MySQL.csv")
 
+
+# Wait! Here it's in transect 8, not in transect 10. In transect 8, slot 10 is a Fall, in transect 10, slot 10 is spring
 tags_MySQL %>%
-  left_join(pepe.all.2023, by = c("TransectID", "Block", "X", "Y")) %>%
-  select(X.1:Transect_position) %>%
-  rename(PlantID = PlantID.x) %>%
+  filter(PlantID == 118)
+
+pepe.all.2023 %>%
+  filter(TransectID %in% c(8,10) & Season %in% c("Spring","Fall") & Transect_position %in% c(8,10))
+
+
+## Fix 118 now! 
+pepe.all.2023 %>%
+  filter(transect)
+
+## Get rid of duplicates because of measurements in teh spring and fall of 2023
+pepe2merge <- pepe.all.2023 %>%
+  distinct(TransectID, Block, Season, Transect_position, X, Y)
+
+### Fix mistakes, recheck  ############################################
+pepe2merge %>%
+  filter(TransectID == 8 & X == 0.75 & Y == 4.75)
+
+pepe2merge <- pepe2merge %>%
+  mutate(Y = case_when( (TransectID == 8 & X == 0.75 & Y == 4.75 & Transect_position == 8) ~ 3.75,
+                        TRUE ~ Y))
+
+####
+
+pepe2merge %>%
+  filter(TransectID == 34 & X == 0.75 & Y == 0.75)
+pepe2merge %>%
+  filter(TransectID == 34 & X == 0.75 & Y == 0.75 & Season == "")
+
+pepe2merge <- pepe2merge %>%
+  filter(!(TransectID == 34 & X == 0.75 & Y == 0.75 & Season == ""))
+
+####
+
+pepe2merge %>%
+  filter(TransectID == 34 & X == 0.25 & Y == 2.25)
+pepe2merge %>%
+  filter(TransectID == 34 & X == 0.25 & Y == 2.25 & Season == "")
+
+pepe2merge <- pepe2merge %>%
+  filter(!(TransectID == 34 & X == 0.25 & Y == 2.25 & Season == ""))
+
+####
+
+pepe2merge %>%
+  filter(TransectID == 34 & X == 0.75 & Y == 3.75)
+pepe2merge %>%
+  filter(TransectID == 34 & X == 0.75 & Y == 3.75 & Season == "")
+
+pepe2merge <- pepe2merge %>%
+  filter(!(TransectID == 34 & X == 0.75 & Y == 3.75 & Season == ""))
+
+####
+
+pepe2merge %>%
+  filter(TransectID == 38 & Transect_position %in% c(3,4))
+
+pepe2merge <- pepe2merge %>%
+  mutate(X = case_when((TransectID == 38 & Transect_position == 3) ~ 0.25,
+                       TRUE ~ X)) %>%
+  mutate(Y = case_when((TransectID == 38 & Transect_position == 3) ~ 1.25,
+                       TRUE ~ Y))
+
+#### Finish fixing mistakes ############################################
+
+tags_MySQL_season <- tags_MySQL %>%
+  left_join(pepe2merge, by = c("TransectID", "Block","X", "Y")) %>%
+  # select(X.1:Transect_position) %>%
   rename(id = X.1) %>%
   rename(x = X) %>%
-  rename(y = Y) %>%
+  rename(y = Y)
+
+## No more duplicates, yay!
+table(tags_MySQL_season$PlantID)[table(tags_MySQL_season$PlantID)>1] ## Still five, 118 735 759 762 982 duplicates
+tags_MySQL_season %>%
+  filter(PlantID %in% c(118, 735, 759, 762, 982))
+
+
+tags_MySQL_season %>%
   write.csv(  file = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/Penstemon-penlandii_tags_MySQL_season&position.csv")
 
 ## Save 'tags' for MySQL with Season and Transect_position  
