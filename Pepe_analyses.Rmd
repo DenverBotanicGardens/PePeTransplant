@@ -97,8 +97,8 @@ pepe.all.2023$Y[pepe.all.2023$Transect_position == 6 &
                   !is.na(pepe.all.2023$Transect_position)] <- 2.75
 
 # 8
-pepe.all.2023$Y[pepe.all.2023$Transect_position == 8 &
-                  pepe.all.2023$TransectID == 8] <- c(3.75,3.75)
+# pepe.all.2023$Y[pepe.all.2023$Transect_position == 8 &
+#                   pepe.all.2023$TransectID == 8] <- c(3.75,3.75)
 
 
 ## existing and transplanted
@@ -122,20 +122,36 @@ pepe.tags %>%
 # write.csv(pepe.tags, file = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/Penstemon-penlandii_tags_MySQL.csv")
 
 
+## Can I add to this function and keep the same PlantIDs??
+pepe.tags.seasonslot <- pepe.all.2023 %>%
+  left_join(pepe.transects, by = c("TransectID","Block")) %>%
+  select(TransectID:Block, Season:Transect_position, X,Y, Type_CT_TT) %>%
+  group_by(TransectID,Block,X,Y, ) %>% #,Season,Transect_position) %>%
+  mutate(PlantID = cur_group_id()) %>%
+  arrange(TransectID, Block, Y, X) %>%
+  distinct(TransectID, Block, Season, Transect_position, X,Y,PlantID )
+
+write.csv(pepe.tags.seasonslot, file = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/Penstemon-penlandii_tags_seasonslot.csv")
+
 tags_MySQL <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/Penstemon-penlandii_tags_MySQL.csv")
 
 
 # Wait! Here it's in transect 8, not in transect 10. In transect 8, slot 10 is a Fall, in transect 10, slot 10 is spring
 tags_MySQL %>%
   filter(PlantID == 118)
+tags_MySQL %>%
+  filter(TransectID == 8 & X == 0.75) ## Missing Transect_position 8. 
+
+tags_MySQL %>%
+  filter(X %in% c(0.25,0.75) & Y %in% c(0.75,1.75,2.75,3.75,4.75))
 
 pepe.all.2023 %>%
   filter(TransectID %in% c(8,10) & Season %in% c("Spring","Fall") & Transect_position %in% c(8,10))
 
 
-## Fix 118 now! 
-pepe.all.2023 %>%
-  filter(transect)
+# ## Fix 118 now! 
+# pepe.all.2023 %>%
+#   filter(transect)
 
 ## Get rid of duplicates because of measurements in teh spring and fall of 2023
 pepe2merge <- pepe.all.2023 %>%
