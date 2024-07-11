@@ -37,22 +37,87 @@ names(trans2024) <- c("TransectID","transectID","Block","ControlORTreatment","Or
 ## Once this gets corrected, for now use old
 # plants2024 <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/20240708_dbExport/20240708_dbExport_pepe_triState_plants.csv")
 
-plants2024 <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/Penstemon-penlandii_tags_MySQL_season&position.csv")
-names(plants2024) <- c("id", "transectID", "Block", "Season", "Transect_position", "X", "Y", "Type","plantID")
+plants2024 <- read.csv( "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/Penstemon-penlandii_tags_seasonslot.csv")
+names(plants2024) <- c("Remove","transectID", "Block", "Season", 
+                       "Transect_position", "x", "y","plantID")
+
+plants2024 <- plants2024[,-1]
 
 data2024 <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/20240708_dbExport/20240708_dbExport_pepe_triState_data.csv")
 
+
+## What is recorded as 118 is in slot 8 (but notes should say "-> origin" instead of "center") and have the measurements for slot 8 but 
+data2024 %>%
+  filter(plantID >= 110 & plantID < 119 & date %in% c("2023-10-16" , "2023-05-31"))
+
+plants2024 %>%
+  filter(plantID == 118) ## However, this is transect 8, slot 10 and fall
+plants2024 %>%
+  filter(transectID == 8 & !is.na(Transect_position)) ## just missing slot 8 so add it
+row2add <- c(id = max(plants2024$id)+1, 
+             transectID = 8,
+             Block = 4,
+             x = 0.75,
+             y = 3.75,
+             plantID = max(plants2024))
+plants2024 <- plants2024 %>%
+  bind_rows()
+
+## PlantID 118 is for Transect 8 slot 8 spring transplant but I put down Y = 4.75 which is incorrect. Should be slot 8, 0.75, 3.75
 surv2023_2024 <- data2024 %>%
-  right_join(plants2024, by = "plantID")
+  left_join(plants2024, by = "plantID")
 
-
+surv2023_2024 %>%
+  filter(transectID == 8 & !is.na(Transect_position))
 
 ```
+
+
+# Check correct assigment of PlantIDs to transplants (and subsequently all of them)   
+```{r}
+
+table(surv2023_2024$date, surv2023_2024$Season)
+
+surv2023_2024 %>%
+  filter(Season == "Fall" & date == "2023-05-31")
+
+## Transect_position 10 is fall in Transect 8 but isn't offset. 
+## In Transect 8, slot 2 is offset -> center and is a spring transplant. However, these measurements are with slot 8 but I on paper put down 4.75 incorrectly. So this line should be Transect_position 8
+  
+
+
+## This is a spring transplant! Not Fall
+surv2023_2024 %>%
+  filter(Season == "Fall" & date == "2023-05-31")
+
+surv2023_2024 %>%
+  filter(plantID == 118) %>%
+  arrange(Transect_position,date, Season) %>%
+  select(c(plantID:date, transectID,Transect_position))
+
+surv2023_2024 %>%
+  filter(transectID == 10 & Season %in% c("Spring","Fall") & date == "2023-10-16")
+
+## Any other duplicate data plantIDs??
+dups <- surv2023_2024 %>%
+  filter(date %in% c("2024-06-24", "2024-06-25"))
+
+
+names(table(dups$plantID)[table(dups$plantID) > 2]) ## 118 is the only one with 6, maybe only duplicated?
+
+surv2023_2024 %>%
+  filter(plantID == 12)
+```
+
+
 
 # Survival   
 ```{r}
 
+table(surv2023_2024$Season, surv2023_2024$date)
 
+surv2023_2024 %>%
+  filter(Season == "Fall" & date == "2023-05-31")
 
 # combine the 2024 dates, shouldn't be different by date, should be different by recorded by
 surv_wide <- surv2023_2024 %>%
