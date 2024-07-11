@@ -46,6 +46,7 @@ plants2024 <- plants2024[,-1]
 data2024 <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/20240708_dbExport/20240708_dbExport_pepe_triState_data.csv")
 
 
+### Don't need this once Rick updates in database and pulls data out
 ## PlantID 118 is for Transect 8 slot 8 spring transplant but I put down Y = 4.75 which is incorrect. Should be slot 8, 0.75, 3.75
 surv2023_2024 <- data2024 %>%
   left_join(plants2024, by = "plantID")
@@ -59,6 +60,8 @@ surv2023_2024$plantID[ (surv2023_2024$transectID == 8 & surv2023_2024$Transect_p
                           !is.na(surv2023_2024$Transect_position))] <- nextPID
 
 
+surv2023_2024 %>%
+  filter(plantID == 118)
 ```
 
 
@@ -89,9 +92,6 @@ table(surv2023_2024$date, surv2023_2024$Season)
 
 table(surv2023_2024$Season, surv2023_2024$date)
 
-surv2023_2024 %>%
-  filter(Season == "Fall" & date == "2023-05-31")
-
 # combine the 2024 dates, shouldn't be different by date, should be different by recorded by
 surv_wide <- surv2023_2024 %>%
   mutate(date = case_when(date == "2024-06-25" ~ "2024-06-24",
@@ -110,12 +110,13 @@ surv_wide %>%
 
 ## After a few more years of data, might be useful. Not sure why the line for first set of Spring isn't at 1
 surv2023_2024 %>%
-  filter(Season %in% c("Spring", "Fall")) %>%  
+  filter(Season %in% c("Spring", "Fall")) %>% 
+  mutate(date = case_when(date == "2024-06-25" ~ "2024-06-24",
+                          TRUE ~ date)) %>% 
   mutate(Date = as.Date(date)) %>%
   arrange(Date) %>%
   mutate(surv = case_when(heightInCentimeters > 0 ~ 1,
                           heightInCentimeters == 0 ~ 0)) %>%
-  filter(!(Season == "Fall" & Date == "2023-05-31")) %>%
   ggplot(  aes(Date, surv, color = Season)) +
     geom_point(pch = "|")+
     geom_smooth(method = "glm", 
@@ -124,8 +125,52 @@ surv2023_2024 %>%
     scale_color_manual(values = c("darkgreen","violet"))
 
 
+## Percent survival at each date
+surv2023_2024 %>%
+  filter(Season %in% c("Spring", "Fall")) %>% 
+  mutate(date = case_when(date == "2024-06-25" ~ "2024-06-24",
+                          TRUE ~ date)) %>%
+  mutate(Date = as.Date(date)) %>%
+  arrange(Date) %>%
+  mutate(surv = case_when(heightInCentimeters > 0 ~ 1,
+                          heightInCentimeters == 0 ~ 0)) %>% 
+  group_by(Season, Date, transectID, recordedBy) %>%
+  summarise(PercSurv = sum(surv)/5) %>%
+  ggplot(  aes(Date, PercSurv, color = Season)) +
+    geom_point(pch = 5)+
+    scale_color_manual(values = c("darkgreen","violet")) +
+    theme_bw()
+
+
+surv2023_2024 <- surv2023_2024 %>% 
+  filter(!(date == "2023-05-31" & y == 4.75))
+## Where are there double records? the 118 and the other duplicated one? spring?  
+## PlantID 982 is for two different plants, both in there twice
+# Plant 118 is in twice as slot 8 with 3.75 and 4.75 Spring, same measurements. 
+## Plant 982 has 0.75 and 1.75 for both slot 3 and 4, need new plantID for one of them - Rick is doing
+# Transect 34, slots 2, 5, and 8 repeated. 8 has two different measurements - because Adriana and Michelle did a second recording of them! Adding the other two with a different recorder. Rick is doing
+
+
+# Fix above and rerun
+surv2023_2024 %>%
+  filter(Season %in% c("Spring", "Fall")) %>% 
+  mutate(date = case_when(date == "2024-06-25" ~ "2024-06-24",
+                          TRUE ~ date)) %>%
+  mutate(Date = as.Date(date)) %>%
+  arrange(Date) %>%
+  mutate(surv = case_when(heightInCentimeters > 0 ~ 1,
+                          heightInCentimeters == 0 ~ 0)) %>% 
+  group_by(Season, Date, transectID, recordedBy) %>%
+  mutate(PercSurv = sum(surv)/5) %>%
+  filter(PercSurv > 1) %>%
+  select(c(plantID, date, heightInCentimeters, recordedBy, transectID,Transect_position, x,y,PercSurv)) %>%
+  arrange(Season,Transect_position) %>%
+  print(n=30)
+
 surv2023_2024 %>%
   filter(Season %in% c("Spring", "Fall")) %>%  
+  mutate(date = case_when(date == "2024-06-25" ~ "2024-06-24",
+                          TRUE ~ date)) %>%
   mutate(Date = as.Date(date)) %>%
   arrange(Date) %>%
   mutate(surv = case_when(heightInCentimeters > 0 ~ 1,
@@ -143,7 +188,9 @@ surv2023_2024 %>%
     theme_bw()
 
 surv2023_2024 %>%
-  filter(Season %in% c("Spring", "Fall")) %>%  
+  filter(Season %in% c("Spring", "Fall")) %>% 
+  mutate(date = case_when(date == "2024-06-25" ~ "2024-06-24",
+                          TRUE ~ date)) %>% 
   mutate(Date = as.Date(date)) %>%
   arrange(Date) %>%
   mutate(surv = case_when(heightInCentimeters > 0 ~ 1,
