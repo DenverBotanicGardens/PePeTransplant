@@ -46,29 +46,18 @@ plants2024 <- plants2024[,-1]
 data2024 <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/20240708_dbExport/20240708_dbExport_pepe_triState_data.csv")
 
 
-## What is recorded as 118 is in slot 8 (but notes should say "-> origin" instead of "center") and have the measurements for slot 8 but 
-data2024 %>%
-  filter(plantID >= 110 & plantID < 119 & date %in% c("2023-10-16" , "2023-05-31"))
-
-plants2024 %>%
-  filter(plantID == 118) ## However, this is transect 8, slot 10 and fall
-plants2024 %>%
-  filter(transectID == 8 & !is.na(Transect_position)) ## just missing slot 8 so add it
-row2add <- c(id = max(plants2024$id)+1, 
-             transectID = 8,
-             Block = 4,
-             x = 0.75,
-             y = 3.75,
-             plantID = max(plants2024))
-plants2024 <- plants2024 %>%
-  bind_rows()
-
 ## PlantID 118 is for Transect 8 slot 8 spring transplant but I put down Y = 4.75 which is incorrect. Should be slot 8, 0.75, 3.75
 surv2023_2024 <- data2024 %>%
   left_join(plants2024, by = "plantID")
 
 surv2023_2024 %>%
   filter(transectID == 8 & !is.na(Transect_position))
+
+## Just assign PlantID to next one for all the transect 8, slot 10 ones that are also 118
+nextPID <- (max(surv2023_2024$plantID) + 1)
+surv2023_2024$plantID[ (surv2023_2024$transectID == 8 & surv2023_2024$Transect_position == 10 &
+                          !is.na(surv2023_2024$Transect_position))] <- nextPID
+
 
 ```
 
@@ -83,30 +72,14 @@ surv2023_2024 %>%
 
 ## Transect_position 10 is fall in Transect 8 but isn't offset. 
 ## In Transect 8, slot 2 is offset -> center and is a spring transplant. However, these measurements are with slot 8 but I on paper put down 4.75 incorrectly. So this line should be Transect_position 8
-  
 
+surv2023_2024$Transect_position[surv2023_2024$date == "2023-05-31" & surv2023_2024$Season == "Fall"] <- 8
+surv2023_2024$comments[surv2023_2024$date == "2023-05-31" & surv2023_2024$Season == "Fall"] <- "offset hole 5cm -> origin"
+surv2023_2024$y[surv2023_2024$date == "2023-05-31" & surv2023_2024$Season == "Fall"] <- 3.75
+surv2023_2024$Season[surv2023_2024$date == "2023-05-31" & surv2023_2024$Season == "Fall"] <- "Spring"
+## Now looks good
+table(surv2023_2024$date, surv2023_2024$Season)
 
-## This is a spring transplant! Not Fall
-surv2023_2024 %>%
-  filter(Season == "Fall" & date == "2023-05-31")
-
-surv2023_2024 %>%
-  filter(plantID == 118) %>%
-  arrange(Transect_position,date, Season) %>%
-  select(c(plantID:date, transectID,Transect_position))
-
-surv2023_2024 %>%
-  filter(transectID == 10 & Season %in% c("Spring","Fall") & date == "2023-10-16")
-
-## Any other duplicate data plantIDs??
-dups <- surv2023_2024 %>%
-  filter(date %in% c("2024-06-24", "2024-06-25"))
-
-
-names(table(dups$plantID)[table(dups$plantID) > 2]) ## 118 is the only one with 6, maybe only duplicated?
-
-surv2023_2024 %>%
-  filter(plantID == 12)
 ```
 
 
