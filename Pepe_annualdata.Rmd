@@ -144,6 +144,10 @@ surv2023_2024 %>%
 
 surv2023_2024 <- surv2023_2024 %>% 
   filter(!(date == "2023-05-31" & y == 4.75))
+
+surv2023_2024 <- surv2023_2024 %>%
+  distinct(Season,date,plantID,transectID,Transect_position,x,y,  .keep_all = TRUE)
+  
 ## Where are there double records? the 118 and the other duplicated one? spring?  
 ## PlantID 982 is for two different plants, both in there twice
 # Plant 118 is in twice as slot 8 with 3.75 and 4.75 Spring, same measurements. 
@@ -167,6 +171,8 @@ surv2023_2024 %>%
   arrange(Season,Transect_position) %>%
   print(n=30)
 
+################################## Should all be fixed in database and come out clean ###############################
+
 surv2023_2024 %>%
   filter(Season %in% c("Spring", "Fall")) %>%  
   mutate(date = case_when(date == "2024-06-25" ~ "2024-06-24",
@@ -175,7 +181,6 @@ surv2023_2024 %>%
   arrange(Date) %>%
   mutate(surv = case_when(heightInCentimeters > 0 ~ 1,
                           heightInCentimeters == 0 ~ 0)) %>%
-  filter(!(Season == "Fall" & Date == "2023-05-31")) %>%
   mutate(date = case_when(date == "2024-06-25" ~ "2024-06-24",
                           TRUE ~ date)) %>%
   filter(date == "2024-06-24") %>%
