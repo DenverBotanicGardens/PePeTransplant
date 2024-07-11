@@ -6,6 +6,9 @@ output: R script
 ---
 
 
+Transect 15: tag lost so new origin tag put in. Transect 15 starts new in 2024
+Transect 16 lost completely. No data for Transect 16
+
 2024    
 ```{r}
 
@@ -30,59 +33,52 @@ Import data
 Move to GitHub once checked and correct  
 ```{r}
 
-trans2024 <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/20240708_dbExport/20240708_dbExport_pepe_triState_transects.csv", header = FALSE)
-
-names(trans2024) <- c("TransectID","transectID","Block","ControlORTreatment","OriginTag","EndTag","Comments")
+trans2024 <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/20240711_dbExport/20240711__pepe_triState_transects.csv", header = TRUE)
 
 ## Once this gets corrected, for now use old
-# plants2024 <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/20240708_dbExport/20240708_dbExport_pepe_triState_plants.csv")
+plants2024 <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/20240711_dbExport/20240711__pepe_triState_plants.csv", header = TRUE)
 
-plants2024 <- read.csv( "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/Penstemon-penlandii_tags_seasonslot.csv")
-names(plants2024) <- c("Remove","transectID", "Block", "Season", 
-                       "Transect_position", "x", "y","plantID")
+data2024 <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/20240711_dbExport/20240711_pepe_triState_data.csv")
 
-plants2024 <- plants2024[,-1]
+## Missed because duplicate PlantID These seeming duplicates are from two different teams Might have to add a record
+# data2024$plantID[data2024$id == 1561] <- 1752
+# Missing 1753 from 0.25, 1.25 transect 38 from 2024 - done in MySQL
 
-data2024 <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/20240708_dbExport/20240708_dbExport_pepe_triState_data.csv")
+## 
 
-
-### Don't need this once Rick updates in database and pulls data out
-## PlantID 118 is for Transect 8 slot 8 spring transplant but I put down Y = 4.75 which is incorrect. Should be slot 8, 0.75, 3.75
 surv2023_2024 <- data2024 %>%
   left_join(plants2024, by = "plantID")
 
-surv2023_2024 %>%
-  filter(transectID == 8 & !is.na(Transect_position))
-
-## Just assign PlantID to next one for all the transect 8, slot 10 ones that are also 118
-nextPID <- (max(surv2023_2024$plantID) + 1)
-surv2023_2024$plantID[ (surv2023_2024$transectID == 8 & surv2023_2024$Transect_position == 10 &
-                          !is.na(surv2023_2024$Transect_position))] <- nextPID
-
 
 surv2023_2024 %>%
-  filter(plantID == 118)
+  filter(plantID == 1753 | (transectID == 38 & transectPosition == 4))
 ```
 
 
 # Check correct assigment of PlantIDs to transplants (and subsequently all of them)   
 ```{r}
 
-table(surv2023_2024$date, surv2023_2024$Season)
+table(surv2023_2024$date, surv2023_2024$transplantSeason)
 
 surv2023_2024 %>%
-  filter(Season == "Fall" & date == "2023-05-31")
+  filter(transplantSeason == "Fall" & date == "2023-05-31")
 
-## Transect_position 10 is fall in Transect 8 but isn't offset. 
-## In Transect 8, slot 2 is offset -> center and is a spring transplant. However, these measurements are with slot 8 but I on paper put down 4.75 incorrectly. So this line should be Transect_position 8
+surv2023_2024 %>%
+  filter(plantID %in% c(118,1752))
 
-surv2023_2024$Transect_position[surv2023_2024$date == "2023-05-31" & surv2023_2024$Season == "Fall"] <- 8
-surv2023_2024$comments[surv2023_2024$date == "2023-05-31" & surv2023_2024$Season == "Fall"] <- "offset hole 5cm -> origin"
-surv2023_2024$y[surv2023_2024$date == "2023-05-31" & surv2023_2024$Season == "Fall"] <- 3.75
-surv2023_2024$Season[surv2023_2024$date == "2023-05-31" & surv2023_2024$Season == "Fall"] <- "Spring"
+
+### Change all dates to one in spring, one in fall and one in 2024 
+surv2023_2024 <- surv2023_2024 %>%
+  mutate(date = case_when(date == "2023-10-17" ~ "2023-10-16",
+                          date == "2024-06-25" ~ "2024-06-24",
+                          TRUE ~ date))
 ## Now looks good
-table(surv2023_2024$date, surv2023_2024$Season)
+table(surv2023_2024$date, surv2023_2024$transplantSeason)
 
+## Remove Transect 16
+
+surv2023_2024 <- surv2023_2024 %>%
+  filter(transectID != 16)
 ```
 
 
@@ -90,60 +86,113 @@ table(surv2023_2024$date, surv2023_2024$Season)
 # Survival   
 ```{r}
 
-table(surv2023_2024$Season, surv2023_2024$date)
+# Was it transect 16 that was lost? 
+## plantID 1752 didn't carry the data with it that is needed, not a new record for each recording 
+# plantid 1753, the other duplicate that needed repeating also didn't carry the data with it to each survey
+## plantID 118 is at (0.8, 3.65)
 
-# combine the 2024 dates, shouldn't be different by date, should be different by recorded by
+surv2023_2024 %>%
+  filter(plantID %in% c(1752,1753))
+
+data2024 %>%
+  filter(plantID %in% c(118,1752,1753))
+
+
+# wide format for detection
 surv_wide <- surv2023_2024 %>%
-  mutate(date = case_when(date == "2024-06-25" ~ "2024-06-24",
-                          TRUE ~ date)) %>%
   mutate(Date = as.Date(date)) %>%
+  filter(!(transectID %in% c(15,16))) %>%
   arrange(Date) %>%
-  pivot_wider(names_from = c(Date, recordedBy),
-              values_from = heightInCentimeters,
-              id_cols = c(plantID,Season,transectID, Block) 
-               ,values_fn = first  ## Because why? why are there double for the same date and observers?
+  ## Can ignore the 5 repeat collections of Fall transplants
+  filter(recordedBy != "Michelle DePrenger-Levin, Adriana Jacobi") %>%
+  mutate(ch = case_when(heightInCentimeters > 0 ~ 1,
+                        heightInCentimeters == 0 ~ 0)) %>%
+  mutate(Survey = case_when(date == "2023-05-31" ~ "aSp23",
+                            date == "2023-10-16" ~ "bFa23",
+                            date == "2024-06-24" ~ "cSm24")) %>%
+  mutate(Obsr = case_when(recordedBy == "Michelle DePrenger-Levin" ~ "MEDL",
+                          # recordedBy == "Michelle DePrenger-Levin, Adriana Jacobi" ~ "MEDL_AJ",
+                          recordedBy == "Mike Bone, Stanton Schell" ~ "MB_SS",
+                          recordedBy == "Arich Fruehling, Leah Veldhuisen" ~ "AF_LV",
+                          recordedBy == "Geena Poulter, Michelle DePrenger-Levin" ~ "GP_MEDL",
+                          recordedBy == "Michael Guidi, Brooke Washburn, Syed Jalalzai" ~ "MG_BW_SJ")) %>%
+  pivot_wider(names_from = c(Survey, Obsr),
+              values_from = ch,
+              id_cols = c(plantID,transplantSeason,transectID) 
+               ,values_fn = function(x) paste(x, collapse = ", ")# first  ## Because why? why are there double for the same date and observers?
               ) %>%
-  arrange(transectID,Block,Season)
+  arrange(transectID,transplantSeason)
+
+
+
+### Combine columns across surveys ignoring the NAs  
+## Need to add zeros to all the fall transplants during the spring which I think I do with the mutate
 
 surv_wide %>%
-  filter(Season %in% c("Spring","Fall")) 
+  mutate(across(aSp23_MEDL:bFa23_MEDL, replace_na, "0")) %>%
+  unite(ch23, aSp23_MEDL:bFa23_MEDL , sep = "") %>% 
+  unite(ch24, cSm24_MB_SS:cSm24_MG_BW_SJ, sep = "") %>%
+  unite(ch, ch23:ch24, sep = "") %>%
+  filter(nchar(ch) < 11) %>%
+  left_join(plants2024, by = "plantID") %>%
+  left_join(data2024, by = "plantID")
+  
+pepe_ch <- surv_wide %>%
+  mutate(across(aSp23_MEDL:bFa23_MEDL, replace_na, "0")) %>%
+  unite(ch23, aSp23_MEDL:bFa23_MEDL , sep = "") %>% 
+  unite(ch24, cSm24_MB_SS:cSm24_MG_BW_SJ, sep = "", na.rm = TRUE) %>%
+  unite(ch, ch23:ch24, sep = "")
 
+## Only two characters would be not measured at all in 2024; still 1753 missing 
+pepe_ch %>%
+  filter(nchar(ch) < 3) %>%
+  left_join(plants2024, by = "plantID") %>%
+  filter(isTransplant == 1)
+
+```
+
+
+```{r}
 ## After a few more years of data, might be useful. Not sure why the line for first set of Spring isn't at 1
 surv2023_2024 %>%
-  filter(Season %in% c("Spring", "Fall")) %>% 
-  mutate(date = case_when(date == "2024-06-25" ~ "2024-06-24",
-                          TRUE ~ date)) %>% 
+  filter(transplantSeason %in% c("Spring", "Fall")) %>% 
+  filter(transectID != 16) %>%
   mutate(Date = as.Date(date)) %>%
   arrange(Date) %>%
   mutate(surv = case_when(heightInCentimeters > 0 ~ 1,
                           heightInCentimeters == 0 ~ 0)) %>%
-  ggplot(  aes(Date, surv, color = Season)) +
+  ggplot(  aes(Date, surv, color = transplantSeason)) +
     geom_point(pch = "|")+
     geom_smooth(method = "glm", 
                 method.args = list(family = "binomial"), 
                 se = TRUE) +
-    scale_color_manual(values = c("darkgreen","violet"))
+    scale_color_manual(values = c("darkgreen","violet")) +
+  theme_bw()
 
 
 ## Percent survival at each date
 surv2023_2024 %>%
-  filter(Season %in% c("Spring", "Fall")) %>% 
-  mutate(date = case_when(date == "2024-06-25" ~ "2024-06-24",
-                          TRUE ~ date)) %>%
-  mutate(Date = as.Date(date)) %>%
-  arrange(Date) %>%
+  filter(transplantSeason %in% c("Spring", "Fall")) %>% 
+  filter(transectID != 16) %>%
+  # mutate(Date = as.Date(date)) %>%
+  # arrange(Date) %>%
+  filter(date == "2024-06-24") %>%
   mutate(surv = case_when(heightInCentimeters > 0 ~ 1,
                           heightInCentimeters == 0 ~ 0)) %>% 
-  group_by(Season, Date, transectID, recordedBy) %>%
+  group_by(transplantSeason, date, transectID, recordedBy) %>%
   summarise(PercSurv = sum(surv)/5) %>%
-  ggplot(  aes(Date, PercSurv, color = Season)) +
-    geom_point(pch = 5)+
+  ggplot(  aes(date, PercSurv, color = transplantSeason)) +
+    geom_boxplot(outlier.shape = NA )+
+    geom_point(position = position_jitterdodge(jitter.height = 0.01), pch = 21)+
     scale_color_manual(values = c("darkgreen","violet")) +
     theme_bw()
 
 
-surv2023_2024 <- surv2023_2024 %>% 
-  filter(!(date == "2023-05-31" & y == 4.75))
+## How many survived by season
+surv2023_2024 %>%
+  filter(date == "2024-06-24") %>%
+  filter(transectID != 16) %>%
+
 
 surv2023_2024 <- surv2023_2024 %>%
   distinct(Season,date,plantID,transectID,Transect_position,x,y,  .keep_all = TRUE)
