@@ -36,9 +36,13 @@ Move to GitHub once checked and correct
 trans2024 <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/20240711_dbExport/20240711__pepe_triState_transects.csv", header = TRUE)
 
 ## Once this gets corrected, for now use old
-plants2024 <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/20240711_dbExport/20240711__pepe_triState_plants.csv", header = TRUE)
+plants2024 <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/20240712_dbExport/20240712__pepe_triState_plants.csv", header = TRUE)
 
-data2024 <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/20240711_dbExport/20240711_pepe_triState_data.csv")
+## Need to check datasheets, then remove plantID 139
+plants2024 <- plants2024 %>%
+  filter(plantID != 139)
+
+data2024 <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/20240712_dbExport/20240712_pepe_triState_data.csv")
 
 ## Missed because duplicate PlantID These seeming duplicates are from two different teams Might have to add a record
 # data2024$plantID[data2024$id == 1561] <- 1752
