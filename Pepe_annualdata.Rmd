@@ -141,7 +141,7 @@ surv2023_2024 %>%
     geom_smooth(method = "glm", 
                 method.args = list(family = "binomial"), 
                 se = TRUE) +
-    scale_color_manual(values = c("darkgreen","violet")) +
+    scale_color_manual(values = c("darkgreen","burlywood1")) +
   theme_bw()
 
 
@@ -186,7 +186,7 @@ surv2023_2024 %>%
     geom_smooth(method = "glm", 
                 method.args = list(family = "binomial"), 
                 se = TRUE) +
-    scale_color_manual(values = c("darkgreen","violet")) +
+    scale_color_manual(values = c("darkgreen","burlywood1")) +
     theme_bw()
 
 surv2023_2024 %>%
@@ -210,7 +210,7 @@ surv2023_2024 %>%
 
 ## Survival depend on size or reproduction?
 
-surv2023_2024 %>%
+survXWhat <- surv2023_2024 %>%
   filter(transplantSeason %in% c("Spring", "Fall")) %>%  
   mutate(surv = case_when(heightInCentimeters > 0 ~ 1,
                           heightInCentimeters == 0 ~ 0)) %>%
@@ -224,13 +224,21 @@ surv2023_2024 %>%
                           recordedBy == "Geena Poulter, Michelle DePrenger-Levin" ~ "GP_MEDL",
                           recordedBy == "Michael Guidi, Brooke Washburn, Syed Jalalzai" ~ "MG_BW_SJ")) %>%
   pivot_wider(names_from = c(Survey, Obsr),
-              values_from = c(heightInCentimeters, reproductiveStatus),
+              values_from = c(heightInCentimeters, basalWidthInCentimeters, reproductiveStatus),
               id_cols = c(plantID, transectID, transplantSeason)) %>%
   relocate(heightInCentimeters_bFa23_MEDL, .after = heightInCentimeters_aSp23_MEDL) %>%
   unite(InitialHeight, heightInCentimeters_aSp23_MEDL:heightInCentimeters_bFa23_MEDL, sep = ",") %>%
   # Split and keep the first
   mutate(InitialHeight = case_when(transplantSeason == "Spring" ~ sub(",.*", "", InitialHeight),
                                    transplantSeason == "Fall" ~ sub(".*,", "", InitialHeight))) %>%
+  mutate(InitialHeight = as.numeric(InitialHeight)) %>%
+  ## Width!
+  relocate(basalWidthInCentimeters_bFa23_MEDL, .after = basalWidthInCentimeters_aSp23_MEDL) %>%
+  unite(InitialbasalWidth, basalWidthInCentimeters_aSp23_MEDL:basalWidthInCentimeters_bFa23_MEDL, sep = ",") %>%
+  # Split and keep the first
+  mutate(InitialbasalWidth = case_when(transplantSeason == "Spring" ~ sub(",.*", "", InitialbasalWidth),
+                                   transplantSeason == "Fall" ~ sub(".*,", "", InitialbasalWidth))) %>%
+  mutate(InitialbasalWidth = as.numeric(InitialbasalWidth)) %>%
   ## Initial reproductive status
   unite(InitialRepro, c(reproductiveStatus_aSp23_MEDL,reproductiveStatus_bFa23_MEDL), sep = ",") %>%
   mutate(InitialRepro = case_when(transplantSeason == "Spring" ~ sub(",.*", "", InitialRepro),
@@ -244,13 +252,138 @@ surv2023_2024 %>%
   mutate(surv = if_else(max(across(heightInCentimeters_cSm24_AF_LV:heightInCentimeters_cSm24_MG_BW_SJ), na.rm = TRUE) > 0,
                         1, 0)) %>%
   relocate(surv, .after = InitialHeight) %>%
-  ggplot(  aes(InitialRepro, surv, color = transplantSeason)) +
-    geom_point(pch = "|")+
-    geom_smooth(method = "glm", 
-                method.args = list(family = "binomial"), 
-                se = TRUE) +
-    theme_bw()
+  relocate(InitialbasalWidth, .after = InitialHeight)
+  
 
+
+ggplot(survXWhat,  aes(InitialHeight, surv, color = transplantSeason)) +
+  geom_point(pch = "|")+
+  geom_smooth(method = "glm", 
+              method.args = list(family = "binomial"), 
+              se = TRUE) +
+  theme_bw()
+
+ggplot(survXWhat,  aes(InitialbasalWidth, surv, color = transplantSeason)) +
+  geom_point(pch = "|")+
+  geom_smooth(method = "glm", 
+              method.args = list(family = "binomial"), 
+              se = TRUE) +
+  theme_bw()
+
+```
+
+```{r}
+
+#### Overall Survival
+survXWhat %>%
+  group_by(transectID, transplantSeason) %>%
+  summarise(percsurv = sum(surv)/n()) %>%
+ggplot(   aes(transplantSeason, percsurv, fill = transplantSeason)) +
+  geom_boxplot() +
+  geom_jitter(position = position_jitterdodge(jitter.height = 0.01), pch = 16) +
+  theme_bw() +
+  scale_x_discrete(labels = c("0" = "Vegetative", "1" = "Reproductive")) +
+  xlab("Initial Reproductive Status") +
+  ylab("Percent survival") +
+  scale_fill_manual("",values = c("Spring"="darkgreen","Fall"="burlywood1"))
+
+survXWhat %>%
+  group_by(transectID, transplantSeason) %>%
+  summarise(percsurv = sum(surv)/n()) %>%
+  group_by(transplantSeason) %>%
+  summarise(MeanSurv = mean(percsurv),
+            SDsurv = sd(percsurv)) 
+
+
+#### Survival spatially
+survXWhat %>%
+  group_by(transectID, transplantSeason) %>%
+  summarise(percsurv = sum(surv)/n()) %>%
+ggplot(   aes(transectID, percsurv, color = transplantSeason)) +
+    geom_point(pch = "|")+
+    stat_smooth(method="glm",  method.args = list(family = "binomial"), se=TRUE, alpha = 0.15)+
+  theme_bw() +
+  xlab("Transects\n(South to North)") +
+  ylab("Percent survival") +
+  scale_color_manual("",values = c("Spring"="darkgreen","Fall"="burlywood1"))
+
+
+
+
+############## Figure 2: survival by initial reproductive status
+ggsave(filename = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Figures/SurvXSeason&ReproStatus.jpg", 
+
+survXWhat %>%
+  group_by(transectID, transplantSeason, InitialRepro) %>%
+  summarise(percsurv = sum(surv)/n()) %>%
+ggplot(   aes(InitialRepro, percsurv, fill = transplantSeason)) +
+  geom_boxplot() +
+  geom_jitter(position = position_jitterdodge(jitter.height = 0.01), pch = 16) +
+  theme_bw() +
+  scale_x_discrete(labels = c("0" = "Vegetative", "1" = "Reproductive")) +
+  xlab("Initial Reproductive Status") +
+  ylab("Percent survival") +
+  scale_fill_manual("",values = c("darkgreen","burlywood1"))
+
+, width=120, height=100,units='mm', dpi=300)  
+
+
+
+survXWhat %>%
+  group_by(transectID, transplantSeason, InitialRepro) %>%
+  summarise(percsurv = sum(surv)/n()) %>%
+  group_by(transplantSeason, InitialRepro) %>%
+  summarise(MeanSurv = mean(percsurv),
+            SDsurv = sd(percsurv)) 
+```
+
+## Survival by initial density of plants
+```{r}
+
+### Calculate initial density in fall 2023 and then bind to survXWhat
+
+InitDensity <- surv2023_2024 %>%
+  filter(isTransplant == 0) %>%
+  group_by(transectID, date, recordedBy) %>%
+  summarise(abundance = n()) %>%
+  ## Average over duplicate observations
+  group_by(transectID, date) %>%
+  summarise(avgAbund = mean(abundance)) %>%
+  filter(date == "2024-06-24")
+
+############## survival by density aka abundance
+# ggsave(filename = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Figures/SurvXSeason&ReproStatus.jpg", 
+
+survXWhat %>%
+  left_join(InitDensity, by = "transectID") %>%
+  group_by(transectID, transplantSeason, avgAbund) %>%
+  summarise(percsurv = sum(surv)/n()) %>%
+ggplot(   aes(avgAbund, percsurv, color = transplantSeason)) +
+    geom_point(pch = "|")+
+    stat_smooth(method="glm",  method.args = list(family = "binomial"), se=TRUE)+
+  theme_bw() +
+  xlab("Conspecific abundance") +
+  ylab("Percent survival") +
+  scale_color_manual("",values = c("darkgreen","burlywood1"))
+
+# , width=120, height=100,units='mm', dpi=300)  
+
+
+
+survXWhat %>%
+  group_by(transectID, transplantSeason, InitialRepro) %>%
+  summarise(percsurv = sum(surv)/n()) %>%
+  group_by(transplantSeason, InitialRepro) %>%
+  summarise(MeanSurv = mean(percsurv),
+            SDsurv = sd(percsurv))
+
+
+
+```
+
+
+
+```{r}
 ## Need initial height
 surv_wide_perfectdetection <- surv2023_2024 %>%
   mutate(date = case_when(date == "2024-06-25" ~ "2024-06-24",
