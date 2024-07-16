@@ -67,6 +67,56 @@ surv2023_2024 <- surv2023_2024 %>%
 ## Now looks good
 table(surv2023_2024$date, surv2023_2024$transplantSeason)
 
+
+
+######################### Appendices ###############################
+surv2023_2024 %>%
+  filter(isTransplant == 0) %>% 
+  left_join(trans2024, by = c("transectID" = "transectId")) %>%
+  filter(!(transectID %in% c(15, 16, 21))) %>%
+  mutate(Date = as.Date(date)) %>%
+  arrange(Date) %>%
+  ## Multiple measurements per year
+  mutate(year = format(Date, "%Y")) %>%
+  group_by(year, transectID, type_CT_TT, plantID, x, y) %>%
+  summarise(heightInCentimeters = max(heightInCentimeters, na.rm = TRUE),
+            basalWidthInCentimeters = max(basalWidthInCentimeters, na.rm = TRUE),
+            reproductiveStatus = max(reproductiveStatus, na.rm = TRUE),
+            numberReproductiveStructures = max(numberReproductiveStructures, na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(surv = case_when(heightInCentimeters > 0 ~ 1,
+                          heightInCentimeters == 0 ~ 0)) %>%
+  ## All have to be alive in the first year
+  filter(!(year == 2023 & surv == 0)) %>%
+  write.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026//2024_Penstemon-penlandii_Annualreport/2023_2024_Penstemon-penlandii_existing.csv")
+
+surv2023_2024 %>%
+  filter(isTransplant == 1) %>% 
+  left_join(trans2024, by = c("transectID" = "transectId")) %>%
+  # filter(!(transectID %in% c(15, 16, 21))) %>%
+  mutate(Date = as.Date(date)) %>%
+  arrange(Date) %>%
+  ## Multiple measurements per year
+  mutate(year = format(Date, "%Y")) %>%
+  group_by(year, transectID, type_CT_TT, plantID, x, y, transplantSeason, transectPosition) %>%
+  summarise(heightInCentimeters = max(heightInCentimeters, na.rm = TRUE),
+            basalWidthInCentimeters = max(basalWidthInCentimeters, na.rm = TRUE),
+            reproductiveStatus = max(reproductiveStatus, na.rm = TRUE),
+            numberReproductiveStructures = max(numberReproductiveStructures, na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(surv = case_when(heightInCentimeters > 0 ~ 1,
+                          heightInCentimeters == 0 ~ 0)) %>%
+  ## All have to be alive in the first year
+  filter(!(year == 2023 & surv == 0)) %>%
+  write.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026//2024_Penstemon-penlandii_Annualreport/2023_2024_Penstemon-penlandii_transplants.csv")
+
+#############################################################################################
+
+
+```
+
+Missing in 2024, along with 21
+```{r}
 ## Remove Transect 16
 surv2023_2024 <- surv2023_2024 %>%
   filter(transectID != 16)
@@ -132,6 +182,7 @@ pepe_ch %>%
 
 ## Does survival differ between the plots with transplants (disturbance) and plots without disturbance? 
 ```{r}
+
 exist2023_2024 <- surv2023_2024 %>%
   filter(isTransplant == 0) %>% 
   left_join(trans2024, by = c("transectID" = "transectId")) %>%
@@ -147,11 +198,6 @@ exist2023_2024 <- surv2023_2024 %>%
                           heightInCentimeters == 0 ~ 0)) %>%
   ## All have to be alive in the first year
   filter(!(year == 2023 & surv == 0)) 
-
-  # pivot_longer(cols = c(Year2023, Year2024),
-  #              names_to = 'year',
-  #              values_to = 'surv') %>%
-  # mutate(year = as.numeric(gsub('Year',"", year))) %>%
 
 ggsave(filename = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Figures/SurvXTransectTreatment.jpg", 
 
@@ -237,6 +283,16 @@ surv2023_2024 %>%
 
 ## Survival among transplants
 ```{r}
+surv2023_2024 %>%
+  filter(transplantSeason %in% c("Spring", "Fall")) %>% 
+  filter(transectID != 16) %>%
+  mutate(Date = as.Date(date)) %>%
+  arrange(Date) %>%
+  mutate(surv = case_when(heightInCentimeters > 0 ~ 1,
+                          heightInCentimeters == 0 ~ 0)) 
+
+
+
 ## After a few more years of data, might be useful. Not sure why the line for first set of Spring isn't at 1
 surv2023_2024 %>%
   filter(transplantSeason %in% c("Spring", "Fall")) %>% 
@@ -457,12 +513,15 @@ AIC compare all the reasons for survival of transplants
 ```{r}
 ## What influences survival from 2023 to 2024
 
-lm1 <- glm()
+lm1 <- glm(surv ~ InitialHeight*transplantSeason, data = survXWhat, family = binomial(link = "logit"))
+lm2 <- glm(surv ~ as.factor(transectID)*transplantSeason, data = survXWhat, family = binomial(link = "logit")) # Spatially?
+lm3 <- glm(surv ~ InitialbasalWidth*transplantSeason, data = survXWhat, family = binomial(link = "logit"))
+lm4 <- glm(surv ~ InitialRepro*transplantSeason, data = survXWhat, family = binomial(link = "logit"))
+lm5 <- glm(surv ~ transplantSeason, data = survXWhat, family = binomial(link = "logit"))
+lm6 <- glm(surv ~ as.factor(transectID), data = survXWhat, family = binomial(link = "logit")) # Spatially not by season
 
   
-  
-  
-lm.list <- list(lm1,lm6, lm2,lm3,lm4, lm5)
+lm.list <- list(lm1,lm2,lm3,lm4, lm5,lm6)
 lm.names <- as.character(unlist(lapply(lm.list,formula)))
 (lm.results <- aictab(lm.list, modnames=lm.names))
 #evidence ratio 
