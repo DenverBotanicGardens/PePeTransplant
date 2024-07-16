@@ -8,6 +8,7 @@ output: R script
 
 Transect 15: tag lost so new origin tag put in. Transect 15 starts new in 2024
 Transect 16 lost completely. No data for Transect 16
+Transect 21 is lost
 
 2024    
 ```{r}
@@ -22,6 +23,9 @@ library(tidyr)
 library(ggplot2)
 library(patchwork)
 library(RMark)
+
+library(lme4)
+require(AICcmodavg)
 
 library(myClim)
 
@@ -76,7 +80,7 @@ surv2023_2024 <- surv2023_2024 %>%
 # wide format for detection
 surv_wide <- surv2023_2024 %>%
   mutate(Date = as.Date(date)) %>%
-  filter(!(transectID %in% c(15,16))) %>%
+  filter(!(transectID %in% c(15,16, 21))) %>%
   arrange(Date) %>%
   ## Can ignore the 5 repeat collections of Fall transplants
   filter(recordedBy != "Michelle DePrenger-Levin, Adriana Jacobi") %>%
@@ -126,7 +130,112 @@ pepe_ch %>%
 
 ```
 
+## Does survival differ between the plots with transplants (disturbance) and plots without disturbance? 
+```{r}
+exist2023_2024 <- surv2023_2024 %>%
+  filter(isTransplant == 0) %>% 
+  left_join(trans2024, by = c("transectID" = "transectId")) %>%
+  filter(!(transectID %in% c(15, 16, 21))) %>%
+  mutate(Date = as.Date(date)) %>%
+  arrange(Date) %>%
+  ## Multiple measurements per year
+  mutate(year = format(Date, "%Y")) %>%
+  group_by(year, transectID, type_CT_TT, plantID) %>%
+  summarise(heightInCentimeters = max(heightInCentimeters, na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(surv = case_when(heightInCentimeters > 0 ~ 1,
+                          heightInCentimeters == 0 ~ 0)) %>%
+  ## All have to be alive in the first year
+  filter(!(year == 2023 & surv == 0)) 
 
+  # pivot_longer(cols = c(Year2023, Year2024),
+  #              names_to = 'year',
+  #              values_to = 'surv') %>%
+  # mutate(year = as.numeric(gsub('Year',"", year))) %>%
+
+ggsave(filename = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Figures/SurvXTransectTreatment.jpg", 
+
+exist2023_2024 %>%
+  pivot_wider(id_cols = c(transectID, type_CT_TT, plantID), names_from = year, names_prefix = "Year",
+              values_from = surv) %>%
+  group_by(transectID, type_CT_TT) %>%
+  # filter(is.na(Year2023))
+  ## No zeros in 2023, new in 2024  
+  summarise(survRate = sum(Year2024[Year2023 == 1], na.rm = TRUE)/sum(Year2023, na.rm = TRUE),
+            recruit = length(is.na(Year2023))) %>%
+  ## I think we didn't get the data on the existing plants in 2023 for treatment plots 2, 4, 6, or 8
+  filter(!is.infinite(survRate)) %>%
+ggplot(   aes(type_CT_TT, survRate)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(height = 0, pch = 16)+
+  theme_bw() +
+  scale_x_discrete(labels = c("CT" = "Control", "TT" = "Transplant")) +
+  xlab("Transect") +
+  ylab("Percent survival") 
+# +
+#   geom_hline(yintercept = 0.7889) +
+#   geom_hline(yintercept = 0.8877)
+
+, width=120, height=100,units='mm', dpi=300)  
+
+existGLM <- exist2023_2024 %>%
+  pivot_wider(id_cols = c(transectID, type_CT_TT, plantID), names_from = year, names_prefix = "Year",
+              values_from = surv) %>%
+  mutate(surv = case_when( (Year2024 == 1 & Year2023 == 1) ~ 1,
+                           # (Year2024 == 1 & is.na(Year2023)) ~ NA,
+                           (Year2024 == 0 & Year2023 == 1) ~ 0 )) %>% 
+  mutate(recruit = ifelse(is.na(Year2023), ifelse(Year2024 == 1, 1, 0), 0) )
+
+lm1 <- glm(surv ~ type_CT_TT, family = binomial(link = "logit"),data = existGLM)
+
+summary(lm1)
+
+## use the oddsratio package
+# odds ratio 
+TTor <- or_glm(data = existGLM, 
+       model = lm1)
+
+# Log odds
+exp(sum(lm1$coefficients))
+## Odds ratio
+exp(lm1$coefficients[1])/exp(lm1$coefficients[1]) * exp(lm1$coefficients[2])
+
+exp(lm1$coefficients[1])/exp(sum(lm1$coefficients))
+## exp(TT) tells us expected increase in the odds of survival for being in a treatment
+exp(TTor$oddsratio)/(1+exp(TTor$oddsratio))
+
+
+## Probability of surviving when in treatment
+exp(sum(lm1$coefficients))/(1+exp(sum(lm1$coefficients)))
+## Probability of surviving when in control
+exp(lm1$coefficients[1])/(1+(exp(lm1$coefficients[1])))
+
+## What happened to data for transects 21 and 32??
+exist2023_2024 %>%
+  pivot_wider(id_cols = c(transectID, type_CT_TT, plantID), names_from = year, names_prefix = "Year",
+              values_from = surv) %>%
+  group_by(transectID, type_CT_TT) %>%
+  # filter(is.na(Year2023))
+  ## No zeros in 2023, new in 2024  
+  summarise(survRate = sum(Year2024[Year2023 == 1], na.rm = TRUE)/sum(Year2023, na.rm = TRUE),
+            recruit = length(is.na(Year2023))) %>%
+  ## I think we didn't get the data on the existing plants in 2023 for treatment plots 2, 4, 6, or 8
+  filter(!is.infinite(survRate)) %>%
+  filter(survRate == 0)
+
+
+## Transect 21 is lost!! 
+surv2023_2024 %>%
+  filter(transectID == 21)
+
+## Looks like only a couple existing, all dead
+surv2023_2024 %>%
+  filter(transectID == 32)
+```
+
+
+
+## Survival among transplants
 ```{r}
 ## After a few more years of data, might be useful. Not sure why the line for first set of Spring isn't at 1
 surv2023_2024 %>%
@@ -143,6 +252,7 @@ surv2023_2024 %>%
                 se = TRUE) +
     scale_color_manual(values = c("darkgreen","burlywood1")) +
   theme_bw()
+
 
 
 ## Percent survival at each date
@@ -294,6 +404,12 @@ survXWhat %>%
   summarise(MeanSurv = mean(percsurv),
             SDsurv = sd(percsurv)) 
 
+survXWhat %>%
+  group_by(transectID) %>%
+  summarise(percsurv = sum(surv)/n()) %>%
+  ungroup() %>%
+  summarise(avgSurv = mean(percsurv))
+
 
 #### Survival spatially
 survXWhat %>%
@@ -336,6 +452,32 @@ survXWhat %>%
   summarise(MeanSurv = mean(percsurv),
             SDsurv = sd(percsurv)) 
 ```
+
+AIC compare all the reasons for survival of transplants   
+```{r}
+## What influences survival from 2023 to 2024
+
+lm1 <- glm()
+
+  
+  
+  
+lm.list <- list(lm1,lm6, lm2,lm3,lm4, lm5)
+lm.names <- as.character(unlist(lapply(lm.list,formula)))
+(lm.results <- aictab(lm.list, modnames=lm.names))
+#evidence ratio 
+for(i in 2:length(lm.list)){
+  print(exp(0.5*lm.results$Delta_AICc[i]))
+}
+
+evidence(lm.results)
+
+
+```
+
+
+
+
 
 ## Survival by initial density of plants
 ```{r}
