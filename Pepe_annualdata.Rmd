@@ -6,17 +6,20 @@ output: R script
 ---
 
 
-Transect 15: tag lost so new origin tag put in. Transect 15 starts new in 2024
-Transect 16 lost completely. No data for Transect 16
-Transect 21 is lost
+2024:    
+      Transect 15: tag lost so new origin tag put in. Transect 15 starts new in 2024    
+      Transect 16 lost completely. No data for Transect 16        
+      Transect 21 is lost     
+      
+2025:    
+      Found some plots, lost another?? Lost one of them
 
-2024    
 ```{r}
 
-rm(list=ls())
+# rm(list=ls())
 library(R2jags)
 library(runjags)
-library(mcmcplots)
+# library(mcmcplots)
 library(boot)
 library(dplyr)
 library(tidyr)
@@ -51,6 +54,27 @@ data2024 <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - Ge
 surv2023_2024 <- data2024 %>%
   left_join(plants2024, by = "plantID")
 
+
+head(surv2023_2024)
+
+load("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/2025_NewPlants.Rdata")
+
+plants2025 <- allDataFix
+
+## Merge with transplant and transplant season from plants2024
+plants2025 <- plants2025 %>%
+  left_join(plants2024)
+
+plants2025 <- plants2025 %>%
+  # dplyr::select(c(plantID, date, transectID, x, y, Height.in.cm:recordedBy, transplantSeason, transectPosition, isTransplant)) %>%
+  mutate(transectID =as.integer(transectID)) %>%
+  replace_na(list(reproductiveStatus = 0, numberReproductiveStructures = 0))
+
+head(trans2024)
+head(plants2024)
+plants2025 <- plants2025 %>%
+  left_join(trans2024[,-1], by = c("transectID" = "transectId")) 
+
 ```
 
 
@@ -64,10 +88,50 @@ surv2023_2024 <- surv2023_2024 %>%
   mutate(date = case_when(date == "2023-10-17" ~ "2023-10-16",
                           date == "2024-06-25" ~ "2024-06-24",
                           TRUE ~ date))
-## Now looks good
+## Now looks good, Except are there duplicate fall records? and some additional records for both fall and spring in 2024??
 table(surv2023_2024$date, surv2023_2024$transplantSeason)
 
+## I did double observations in 2024. For now keep one, didn't get double in 2024, or do first and second measurement
+surv2023_2024 <- surv2023_2024 %>%
+  mutate(recordedBy = case_when(recordedBy == "Michael Bone, Stanton Schell" ~ "MB_SS",
+                                recordedBy == "Mike Bone, Stanton Schell" ~ "MB_SS",
+                                recordedBy == "Arich Fruehling, Leah Veldhuisen" ~ "AF_LV",
+                                recordedBy == "Geena Poulter, Michelle DePrenger-Levin" ~ "GP_MEDL",
+                                recordedBy == "Michelle DePrenger-Levin" ~ "MEDL",
+                                recordedBy == "Michelle DePrenger-Levin, Adriana Jacobi" ~ "MEDL_AJ",
+                                recordedBy == "Michael Guidi, Brooke Washburn, Syed Jalalzai" ~ "MG_BW_SJ"
+                                ))
 
+surv2023_2024 %>%
+  filter(transplantSeason == "Fall") %>%
+  group_by(date, transectID, recordedBy) %>%
+  add_count() %>%
+  dplyr::select(plantID:heightInCentimeters, x,y ,recordedBy , transectID, transplantSeason:isTransplant, n) %>%
+  arrange(transectID, transectPosition) 
+
+surv2023_2024 %>%
+  mutate(transectPosition = as.numeric(transectPosition)) %>%
+  filter(date == "2023-10-16" & transectID == 34) %>%
+  filter(isTransplant == 1) %>%
+  arrange(transectPosition) %>%
+  group_by(transplantSeason, transectPosition) %>%
+  add_count() %>%
+  dplyr::select(plantID:heightInCentimeters, transectID:n)
+
+
+## Two plants measured twice
+surv2023_2024 %>%
+  filter(date == "2023-05-31") %>%
+  group_by(transectID, recordedBy, isTransplant, plantID) %>%
+  add_count() %>%
+  filter(n > 1)
+
+surv2023_2024 <- surv2023_2024 %>%
+  filter(!(id.x %in% c(187,189)))
+
+
+surv2023_2024 <- surv2023_2024 %>%
+  dplyr::select(plantID:recordedBy, transectID:isTransplant)
 
 ######################### Appendices ###############################
 surv2023_2024 %>%
@@ -115,13 +179,94 @@ surv2023_2024 %>%
 
 ```
 
-Missing in 2024, along with 21
+Missing 16 and 21 in 2024
 ```{r}
-## Remove Transect 16
-surv2023_2024 <- surv2023_2024 %>%
-  filter(transectID != 16)
+surv2023_2024 %>%
+  filter(transectID == 16 & date == "2024-06-24")
+
+surv2023_2024 %>%
+  filter(transectID == 21 & date == "2024-06-24")
+
+# ## Remove Transect 16
+# surv2023_2024 <- surv2023_2024 %>%
+#   filter(transectID != 16)
+
+## Need to add a 1st and 2nd observation for 2024. Second for only some plots in 2023, some weren't measured (I think < transect 10??)
+## Yes, transects 1-9 we only measured plants that were the transplants in the spring. 
+surv2023_2024 %>%
+  filter(date == "2023-05-31") %>%
+  group_by(transectID, recordedBy, isTransplant) %>%
+  summarise(n = n()) %>%
+  arrange(transectID) %>% 
+  filter(isTransplant == 0) %>%
+  print(n = 32)
+
+
+
+
+
 ```
 
+Measurements:
+        1st                                                     2nd              
+2023:  10,12,16,18,20,22,24,26,34,36,38,40                   
+2024:  all but 16 and 21                                 all but 16 and 21
+2025: none    
+
+## First time only one observation per year; average measurements between two groups, or keep max if only one team observed. 
+## OR two times in 2024, once all other years??
+```{r}
+
+plants25toadd <- plants2025 %>%
+  dplyr::select(plantID,date, Height.in.cm:Comments, recordedBy, transectID, x, y, transplantSeason:isTransplant) %>%
+  rename(heightInCentimeters = Height.in.cm) %>%
+  rename(basalWidthInCentimeters = Basal.Width.in.cm) %>%
+  rename(numberReproductiveStructures = Number.Reproductive.Structures) %>%
+  rename(comments = Comments) %>%
+  filter(date != "plant not recorded in 2025")
+
+# surv_wide <- 
+  surv2023_2024 %>%
+  bind_rows(plants25toadd) %>%
+  mutate(Date = as.Date(date)) %>%
+  # filter(!(transectID %in% c(15,16, 21))) %>%
+  arrange(Date) %>%
+  ## Can ignore the 5 repeat collections of Fall transplants
+  filter(recordedBy != "MEDL_AJ") %>%
+  mutate(ch = case_when(heightInCentimeters > 0 ~ 1,
+                        heightInCentimeters == 0 ~ 0)) %>%
+  mutate(Survey = case_when(date == "2023-05-31" ~ "aSp23",
+                            date == "2023-10-16" ~ "bFa23",
+                            date == "2024-06-24" ~ "cSm24",
+                            date == "6/24/2025" ~ "d25", 
+                            date == "6/25/2025" ~ "d25")) %>%
+  pivot_wider(names_from = c(Survey, recordedBy),
+              values_from = ch,
+              id_cols = c(plantID,transplantSeason,transectID) 
+               ,values_fn = function(x) paste(x, collapse = ", ")# first  ## Because why? why are there double for the same date and observers?
+              ) %>%
+  arrange(transectID,transplantSeason)
+
+## Need to remove the transects that recordedBy didn't view, change to observation 1 and 2 for each plot
+plants25toadd %>%
+  group_by(recordedBy, transectID) %>%
+  summarise(n = n())
+  
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+Pre 2025
 
 
 # Survival   
@@ -224,6 +369,8 @@ ggplot(   aes(type_CT_TT, survRate)) +
 
 , width=120, height=100,units='mm', dpi=300)  
 
+
+
 existGLM <- exist2023_2024 %>%
   pivot_wider(id_cols = c(transectID, type_CT_TT, plantID), names_from = year, names_prefix = "Year",
               values_from = surv) %>%
@@ -279,6 +426,51 @@ surv2023_2024 %>%
   filter(transectID == 32)
 ```
 
+# Add 2025 
+```{r}
+# add rows, then pivot wider
+add2025 <- plants2025_updated %>% 
+  left_join(trans2024, by = c("transectID" = "transectId")) %>%
+  filter(duplicateNew == 0) %>%
+  mutate(year = format(as.Date(date, format = "%m/%d/%Y"),"%Y")) %>%
+  mutate(surv = case_when(heightInCentimeters > 0 ~ 1,
+                          heightInCentimeters == 0 ~ 0)) %>%
+  select(c(year, transectID, type_CT_TT, plantID, heightInCentimeters, surv)) 
+
+exist2023_2024 %>%
+  bind_rows(add2025) %>%
+  pivot_wider(id_cols = c(transectID, type_CT_TT, plantID), names_from = year, names_prefix = "Year",
+              values_from = surv) %>%
+  group_by(transectID, type_CT_TT) %>%
+  summarise(survRate24 = sum(Year2024[Year2023 == 1], na.rm = TRUE)/sum(Year2023, na.rm = TRUE),
+            survRate25 = sum(Year2025[Year2023 == 1], na.rm = TRUE)/sum(Year2023, na.rm = TRUE),
+            recruit = length(is.na(Year2023))) %>%
+  filter(!is.infinite(survRate25)) %>%
+  filter(!is.na(survRate25)) %>%
+ggplot(   aes(type_CT_TT, survRate25)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(height = 0, pch = 16)+
+  theme_bw() +
+  scale_x_discrete(labels = c("CT" = "Control", "TT" = "Transplant")) +
+  xlab("Transect") +
+  ylab("Percent survival") 
+
+existGLM <- exist2023_2024 %>%
+  bind_rows(add2025)
+  # pivot_wider(id_cols = c(transectID, type_CT_TT, plantID), names_from = year, names_prefix = "Year",
+  #             values_from = surv) %>%
+  # group_by(transectID, type_CT_TT) %>%
+  # summarise(survRate24 = sum(Year2024[Year2023 == 1], na.rm = TRUE)/sum(Year2023, na.rm = TRUE),
+  #           survRate25 = sum(Year2025[Year2023 == 1], na.rm = TRUE)/sum(Year2023, na.rm = TRUE),
+  #           recruit = length(is.na(Year2023))) %>%
+  # filter(!is.infinite(survRate25)) %>%
+  # filter(!is.na(survRate25))
+
+lm1 <- glm(surv ~ type_CT_TT + year, family = binomial(link = "logit"),data = existGLM[existGLM$year != 2023,])
+summary(lm1)
+```
+
+
 
 
 ## Survival among transplants
@@ -292,16 +484,32 @@ surv2023_2024 %>%
                           heightInCentimeters == 0 ~ 0)) 
 
 
-
-## After a few more years of data, might be useful. Not sure why the line for first set of Spring isn't at 1
-surv2023_2024 %>%
+transplants2025 <- plants2025_updated %>%
+  filter(duplicateNew == 0) %>%
   filter(transplantSeason %in% c("Spring", "Fall")) %>% 
-  filter(transectID != 16) %>%
-  mutate(Date = as.Date(date)) %>%
-  arrange(Date) %>%
+  mutate(date = as.Date(date, "%m/%d/%Y")) %>%
+  arrange(date) %>%
   mutate(surv = case_when(heightInCentimeters > 0 ~ 1,
                           heightInCentimeters == 0 ~ 0)) %>%
-  ggplot(  aes(Date, surv, color = transplantSeason)) +
+  mutate(id.x = id,
+         id.y = id) %>%
+  select(c(id.x, plantID, date, heightInCentimeters, basalWidthInCentimeters, reproductiveStatus, numberReproductiveStructures,
+           comments, recordedBy, id.y, transectID, x, y, transplantSeason, transectPosition, isTransplant))
+
+## After a few more years of data, might be useful. Not sure why the line for first set of Spring isn't at 1
+surv23_25 <- surv2023_2024 %>%
+  mutate(date = as.Date(date)) %>%
+  bind_rows(transplants2025) %>%
+  filter(transplantSeason %in% c("Spring", "Fall")) %>% 
+  filter(transectID != 16) %>%
+  mutate(year = format(as.Date(date, format = "%Y-%m-%d"), "%Y")) %>%
+  arrange(year) %>%
+  mutate(surv = case_when(heightInCentimeters > 0 ~ 1,
+                          heightInCentimeters == 0 ~ 0)) 
+
+
+surv23_25 %>%
+  ggplot(  aes(year, surv, color = transplantSeason)) +
     geom_point(pch = "|")+
     geom_smooth(method = "glm", 
                 method.args = list(family = "binomial"), 
@@ -311,23 +519,31 @@ surv2023_2024 %>%
 
 
 
-## Percent survival at each date
-surv2023_2024 %>%
+## Percent survival at each date, zero survival and then greater survival??
+plot1 <- surv23_25 %>%
   filter(transplantSeason %in% c("Spring", "Fall")) %>% 
   filter(transectID != 16) %>%
   # mutate(Date = as.Date(date)) %>%
-  # arrange(Date) %>%
-  filter(date == "2024-06-24") %>%
+  arrange(date) %>%
+  filter(date %in% c("2024-06-24", "2025-06-25")) %>%
   mutate(surv = case_when(heightInCentimeters > 0 ~ 1,
                           heightInCentimeters == 0 ~ 0)) %>% 
   group_by(transplantSeason, date, transectID, recordedBy) %>%
   summarise(PercSurv = sum(surv)/5) %>%
-  ggplot(  aes(date, PercSurv, color = transplantSeason)) +
+  filter(PercSurv != 0) %>%
+  ggplot(  aes(as.factor(date), PercSurv, color = transplantSeason)) +
     geom_boxplot(outlier.shape = NA )+
     geom_point(position = position_jitterdodge(jitter.height = 0.01), pch = 16)+
     scale_color_manual(values = c("green4","hotpink4")) +
-    theme_bw()
+    theme_bw()+
+    xlab("Survey date")+
+    ylab("Percent survival")
 
+ggsave(filename = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Figures/SurvXTreatmentYear.jpg", 
+       
+       plot1
+       
+, width=140, height=110,units='mm', dpi=300)  
 
 
 ## How many survived by season
@@ -354,6 +570,30 @@ surv2023_2024 %>%
                 se = TRUE) +
     scale_color_manual(values = c("darkgreen","burlywood1")) +
     theme_bw()
+
+## To 2025
+############################### Could be they weren't detectable but still there, could see them again in 2025
+## Or we confused a new plant with old one in 2025. 
+ggsave(filename = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Figures/SurvXTreatmentYearTransect.jpg", 
+
+
+surv23_25 %>%
+  filter(transplantSeason %in% c("Spring", "Fall")) %>%  
+  mutate(surv = case_when(heightInCentimeters > 0 ~ 1,
+                          heightInCentimeters == 0 ~ 0,
+                          is.na(heightInCentimeters) ~ 0)) %>%
+  ggplot(  aes(transectID, surv, color = transplantSeason)) +
+    geom_point(pch = "|")+
+    geom_smooth(method = "glm", 
+                method.args = list(family = "binomial"), 
+                se = TRUE) +
+    scale_color_manual(values = c("darkgreen","burlywood1")) +
+    theme_bw()+
+  facet_wrap(~year)
+
+
+, width=150, height=100,units='mm', dpi=300)  
+
 
 surv2023_2024 %>%
   filter(transplantSeason %in% c("Spring", "Fall")) %>% 
@@ -475,7 +715,7 @@ ggplot(   aes(transectID, percsurv, color = transplantSeason)) +
     geom_point(pch = "|")+
     stat_smooth(method="glm",  method.args = list(family = "binomial"), se=TRUE, alpha = 0.15)+
   theme_bw() +
-  xlab("Transects\n(South to North)") +
+  xlab("Transects/n(South to North)") +
   ylab("Percent survival") +
   scale_color_manual("",values = c("Spring"="darkgreen","Fall"="burlywood1"))
 
