@@ -202,16 +202,47 @@ surv2023_2024 %>%
   print(n = 32)
 
 
+## Maybe we successfully found small plots with no plants for the treatments? at least under 10
+# nothing in 2,4,6,8,14,28,30
+surv2023_2024 %>%
+  filter(date == "2023-10-16") %>%
+  group_by(transectID, recordedBy, isTransplant) %>%
+  summarise(n = n()) %>%
+  arrange(transectID) %>% 
+  filter(isTransplant == 0) %>%
+  print(n = 33)
 
 
+trans2024
+
+# Even are transplants, Odds are controls
+# No existing in 6, 15 lost, 21 lost, nothing in 28, Nothing in 30. 
+plants2025 %>%
+  filter(date != "plant not recorded in 2025") %>%
+  group_by(transectID, recordedBy, isTransplant) %>%
+  summarise(n = n()) %>%
+  arrange(transectID) %>% 
+  filter(isTransplant == 0) %>%
+  print(n = 39)
+
+# Remove one Transect 18, no recorder?
+# ?? transect 19 28 with no recorder, only 1 under BW and MG, assign BW; MG to 19
+# 20 should all be MG; BW
+## All the missing observers are fine, they just did something funny entering data. 
+plants2025 %>%
+  filter(date != "plant not recorded in 2025") %>%
+  group_by(transectID, recordedBy) %>%
+  summarise(n = n()) %>%
+  arrange(transectID) %>% 
+  print(n = 49)
 
 ```
 
 Measurements:
         1st                                                     2nd              
-2023:  10,12,16,18,20,22,24,26,34,36,38,40                   
+2023:  10,12,16,18,20,22,24,26,34,36,38,40               all other than  2,4,6,8,14,28,30     
 2024:  all but 16 and 21                                 all but 16 and 21
-2025: none    
+2025: none have double    
 
 ## First time only one observation per year; average measurements between two groups, or keep max if only one team observed. 
 ## OR two times in 2024, once all other years??
@@ -223,30 +254,58 @@ plants25toadd <- plants2025 %>%
   rename(basalWidthInCentimeters = Basal.Width.in.cm) %>%
   rename(numberReproductiveStructures = Number.Reproductive.Structures) %>%
   rename(comments = Comments) %>%
-  filter(date != "plant not recorded in 2025")
+  filter(date != "plant not recorded in 2025") 
+
+surv2023_2024 %>%
+  filter(plantID == 15)
 
 # surv_wide <- 
   surv2023_2024 %>%
   bind_rows(plants25toadd) %>%
+    mutate(date = case_when(date == "6/25/2025" ~ "6/24/2025",
+                            ## To make averages for the few doubles in 2023
+                            date == "2023-05-31" ~ "2023-10-16",
+                            TRUE ~ date)) %>%
   mutate(Date = as.Date(date)) %>%
-  # filter(!(transectID %in% c(15,16, 21))) %>%
-  arrange(Date) %>%
   ## Can ignore the 5 repeat collections of Fall transplants
   filter(recordedBy != "MEDL_AJ") %>%
+  # filter(!(transectID %in% c(15,16, 21))) %>%
+  arrange(Date) %>%
+  group_by(plantID, date) %>%
+  add_count() %>%
+    mutate(heightInCentimeters = case_when(n == 2 ~ mean(heightInCentimeters),
+                                           n == 1 ~ max(heightInCentimeters)),
+           basalWidthInCentimeters = case_when(n == 2 ~ mean(basalWidthInCentimeters),
+                                           n == 1 ~ max(basalWidthInCentimeters)),
+           reproductiveStatus = case_when(n == 2 ~ max(basalWidthInCentimeters),
+                                           n == 1 ~ max(basalWidthInCentimeters)),
+           numberReproductiveStructures = case_when(n == 2 ~ mean(numberReproductiveStructures),
+                                           n == 1 ~ max(numberReproductiveStructures))) %>%
+    dplyr::select(plantID:numberReproductiveStructures,transectID:isTransplant) %>% 
+    distinct() %>%
+  ungroup() %>%
+    # group_by(plantID, date) %>%
+    # add_count() %>%
+    # filter(n > 1) %>%
+    # arrange(plantID, date) %>%
+    # group_by(date) %>%
+    # summarise(n = n())
   mutate(ch = case_when(heightInCentimeters > 0 ~ 1,
                         heightInCentimeters == 0 ~ 0)) %>%
-  mutate(Survey = case_when(date == "2023-05-31" ~ "aSp23",
-                            date == "2023-10-16" ~ "bFa23",
-                            date == "2024-06-24" ~ "cSm24",
-                            date == "6/24/2025" ~ "d25", 
-                            date == "6/25/2025" ~ "d25")) %>%
-  pivot_wider(names_from = c(Survey, recordedBy),
+  # mutate(Survey = case_when(date == "2023-05-31" ~ "aSp23",
+  #                           date == "2023-10-16" ~ "bFa23",
+  #                           date == "2024-06-24" ~ "cSm24",
+  #                           date == "6/24/2025" ~ "d25", 
+  #                           date == "6/25/2025" ~ "d25")) %>%
+  pivot_wider(names_from = date,# names_from = c(Survey, recordedBy),
               values_from = ch,
-              id_cols = c(plantID,transplantSeason,transectID) 
-               ,values_fn = function(x) paste(x, collapse = ", ")# first  ## Because why? why are there double for the same date and observers?
+              # id_cols = c(plantID,transplantSeason,transectID) 
+               # ,values_fn = function(x) paste(x, collapse = ", ")# first  ## Because why? why are there double for the same date and observers?
               ) %>%
   arrange(transectID,transplantSeason)
 
+## Why are there two still in 2024? 
+  
 ## Need to remove the transects that recordedBy didn't view, change to observation 1 and 2 for each plot
 plants25toadd %>%
   group_by(recordedBy, transectID) %>%
