@@ -1,0 +1,274 @@
+---
+title: "Pepe_data clean up"
+author: "Michelle DePrenger-Levin"
+date: "2025-06-30"
+output: html_document
+---
+
+The Survey123 did not have a way to add new individuals. We used a repeated tag and added to the comments that the plant was "new". However, there were some typos and some missing recording of new. It is also possible that we recorded duplicate information on some tags since nothing prevents you from doing that. 
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+```
+
+```{r}
+# setwd("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/")
+# file.choose()
+```
+
+
+
+```{r}
+
+transects <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/20250626_dbExport/Penstemon_penlandii_TriStateTransplant_MonitoringProject_0.csv")
+
+plantsXY <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/20250626_dbExport/_pepe_triState_plants.csv")
+
+annualdata <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/20250626_dbExport/_pepe_triState_data_1.csv")
+
+### Notes with which plant is NEW, which are accidental repeats  
+# addNew <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/2025_PePe2upload_rick_plants_MEDL_rickAgain.csv")
+
+
+allData25 <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/2025_secondAttempt/20250806_all2025Data.csv")
+
+allData <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/2025_secondAttempt/20250806_all2025Data_withAllDBPlants.csv")
+
+```
+
+
+
+```{r}
+head(annualdata)
+head(plantsXY)
+head(transects) ## No transect 15, two transect 9 because Lange Grover and I read this plot and so did Arich and Irene. We can remove the Lange and MEDL one
+
+## Remove all that are Lange and MEDL from 9
+
+## 67 times we have duplicate records. The intent was to select 1 plant per plot (40 plots) to use as the duplicate for new plants. Either we used more than one plant ID or some of the duplicates are errors. 
+annualdata %>%
+  group_by(Plant) %>%
+  summarise(RecordXPlant = n()) %>%
+  filter(RecordXPlant > 1)
+
+table(annualdata$recordedBy) ## 137 records that have no recorded by!
+annualdata %>%
+  filter(recordedBy == "")
+
+## Try to update all the new plants first to a new plantID before join? 
+likelyNew <- annualdata %>%
+  group_by(Plant) %>%
+  summarise(n = n()) %>%
+  filter(n > 2)
+
+annualdata %>%
+  filter(Plant %in% likelyNew$Plant) %>%
+  filter(grepl("X:", Comments) & grepl("Y:", Comments))
+
+annualdata %>%
+  filter(grepl("Hew", Comments))
+
+annualdata_updateNew <- annualdata %>%
+  mutate(New.Plant = case_when( (grepl("X:", Comments) & grepl("Y:", Comments)) ~ 1,
+                                grepl("New", Comments) ~ 1,
+                                grepl("Hew", Comments) ~ 1,
+                                grepl("new", Comments) ~ 1,
+                                TRUE ~ 0))
+# Do all the likely new plants have a 1 or are we missing some? 
+annualdata_updateNew %>%
+  group_by(Plant, New.Plant) %>%
+  summarise(n = n()) %>%
+  filter(n > 2)
+
+## Might be the Transect 9 LG, MEDL one I should remove but if not...
+annualdata_updateNew %>%
+  filter(Plant == 130)
+annualdata_updateNew$New.Plant[annualdata_updateNew]
+
+## NOW give all 
+
+############################# Merge to figure out which need to have updated XY and which are new
+## Full join because we might not have a record from the current year but want to keep all and show it was dead this year and want all new this year
+merged <- annualdata %>%
+  full_join(plantsXY, by = c("Plant" = "plantID"))
+
+head(merged)
+merged %>%  
+  group_by(transectID) %>%
+  filter(recordedBy == "") %>%
+  summarise(n = n())
+
+merged %>%
+  filter(grepl("LG", recordedBy) & transectID == 40)
+
+merged %>%
+  group_by(transectID, recordedBy) %>%
+  summarise(n = n())
+
+merged %>%
+  filter(transectID == 1 & recordedBy == "")
+
+
+
+
+merged %>%
+  group_by(Plant) %>%
+  summarise(n = n()) %>%
+  filter(n > 1) %>%
+  print(n = 68)
+
+### This has errors!!!
+write.csv(merged, "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/2025_PePe2upload.csv", row.names = FALSE)
+
+```
+
+
+Tablet pick plant number, the database ID gets split out 
+```{r}
+
+## Remove accidental double observation
+allData <- allData %>%
+  filter(!(recordedBy == "LG, MEDL" & transectID == 9))
+
+## Some plots have two plants on the same tag but both aren't new, need to move one; 35 have two records. 
+allDataFix %>%
+  filter(New.Plant != 1) %>%
+  group_by(transectID, plantID) %>%
+  summarise(n = n()) %>%
+  filter(n > 1) %>%
+  filter(transectID > 27)
+
+# 5         35     791     2
+# 6         35    1258     2
+# 7         35    1259     2
+
+allDataFix %>%
+  arrange(transectID, y, x) %>%
+  filter(transectID == 35) %>%
+  select(c(ObjectID, plantID, recordedBy, x,y, Height.in.cm:Comments, New.Plant)) %>%
+  arrange(y,x, plantID, ObjectID) %>%
+  add_count(plantID) %>%
+  filter(y > 4 & y < 5) %>%
+  # filter(plantID == 1542) %>%
+  arrange(plantID)
+
+
+
+```
+
+Object IDs that are new:    
+x      233 (has Y: and X: in comments by AF, IV)  
+x      878 is new, also on plant 80 but 879 needs the X updated
+x      768 make new with same X and Y as other tag 92
+x        All 1708 should be new
+x      647 IS NOT NEW, all other plant 1523 are new, they all have "New" and "x" and "y"
+x      664 of plant 1524 make new, same location
+x  Delete 674, just recorded plant 1542 twice
+x      694 new plant same location as other 1562
+x        148 NOT NEW, all other plant 182 are new, only have "X:" and "Y:"
+x      160 new, duplicate for 1680
+x      302 all new, also all have "X:" and "Y:"
+x        All 348 are new, all have either "NP" or "NEW" or "New"
+x   Delete 471, is the same as other for plant 1206
+x      526 is NOT NEW, all other plant 533 are new, they have "NEW" or "(." Some nonsense XY measurements like   NEW( 4.2,2.10), probably 0.42 for the X
+      Move 577 to plant 534
+      Move object 610 to plant 588
+x      both plant 1309 are new
+x        1026 (object) NOT NEW, all other plant 741 are new, only list "X:" and "Y:"
+```{r}
+## Fix new duplicates, reassign, add New.Plant column
+allDataFix <- allData %>%
+  mutate(New.Plant = case_when( (grepl("Y:", Comments) & grepl("X:", Comments))~1,
+                                (grepl("New", Comments) & grepl("x", Comments) & grepl("y", Comments))~1,
+                                ObjectID == 878 ~ 1,
+                                ObjectID == 768 ~ 1,
+                                plantID == 1708 ~ 1,
+                                ObjectID == 664 ~ 1,
+                                ObjectID == 694 ~ 1,
+                                (plantID == 182 & ObjectID != 148) ~1,
+                                ObjectID == 160 ~ 1,
+                                ObjectID == 52 ~ 1,
+                                ObjectID == 545 ~ 1,
+                                ObjectID == 577 ~ 1,
+                                ObjectID == 610 ~ 1,
+                                ObjectID == 1064 ~ 1,
+                                ObjectID == 1134 ~ 1,
+                                ObjectID == 1115 ~ 1,
+                                grepl("NP", Comments) ~ 1,
+                                grepl("NEW", Comments) ~ 1,
+                                grepl("New", Comments) ~ 1,
+                                grepl("new", Comments) ~ 1,
+                                grepl("\\(.", Comments) ~ 1,
+                                plantID == 1309 ~ 1,
+                                TRUE ~ 0
+                                ))
+
+allDataFix <- allDataFix %>%
+  filter(is.na(ObjectID) | ObjectID != 674) %>%
+  filter(is.na(ObjectID) |ObjectID != 471) 
+
+allDataFix %>%
+  filter(is.na(ObjectID))
+
+################# ??????????????? #######################
+allDataFix %>%
+  filter(ObjectID == 577)
+allDataFix %>%
+  filter(plantID == 534)
+      #   Move 577 to plant 534
+# delete id.db. 560 and add this data plantID: 534         x: 0.11 y: 2.88  to ObjectID 577
+allDataFix <- allDataFix %>%
+  filter(id.db. != 560)
+allDataFix$plantID[allDataFix$ObjectID == 577] <- 534
+allDataFix$x[allDataFix$ObjectID == 577] <- 0.11
+allDataFix$y[allDataFix$ObjectID == 577] <- 2.88
+
+
+allDataFix %>%
+  filter(ObjectID == 610)
+allDataFix %>% 
+  filter(plantID == 588)
+allDataFix <- allDataFix %>%
+  filter(id.db. != 596)
+      # Move object 610 to plant 588 
+allDataFix$plantID[allDataFix$ObjectID == 610] <- 588
+allDataFix$x[allDataFix$ObjectID == 610] <- 0.5
+allDataFix$y[allDataFix$ObjectID == 610] <- 3.68
+
+
+allDataFix %>%
+  filter(ObjectID == 1162)
+allDataFix %>% 
+  filter(plantID == 793)
+allDataFix <- allDataFix %>%
+  filter(id.db. != 803)
+allDataFix$plantID[allDataFix$ObjectID == 1162] <- 793
+allDataFix$x[allDataFix$ObjectID == 1162] <- 0.56
+allDataFix$y[allDataFix$ObjectID == 1162] <- 4.1
+
+allDataFix %>%
+  filter(New.Plant != 1) %>%
+  group_by(transectID, plantID) %>%
+  summarise(n = n()) %>%
+  filter(n > 1)
+
+allDataFix %>%
+  arrange(New.Plant, plantID) %>%
+  dplyr::select(c(plantID, x, y, Height.in.cm, New.Plant)) %>%
+  filter(New.Plant == 1)
+
+## 
+allDataFix$plantID[allDataFix$New.Plant == 1] <- (1:length(allDataFix$plantID[allDataFix$New.Plant == 1]) + max(allDataFix$plantID))
+
+allDataFix %>%
+  group_by(plantID) %>%
+  summarise(n = n()) %>%
+  filter(n >1)
+
+save(allDataFix, file = "C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026/Data/2025_NewPlants.Rdata")
+
+
+```
+
