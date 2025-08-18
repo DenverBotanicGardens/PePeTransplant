@@ -215,6 +215,20 @@ plants2025 %>%
 
 ```
 
+
+Density
+```{r}
+plants2025 %>%
+  filter(Height.in.cm > 0) %>%
+  group_by(transectID) %>%
+  summarize(density2m = n()/5) %>%
+  ungroup() %>%
+  summarize(mean = mean(density2m),
+            sd = sd(density2m),
+            se = sd(density2m)/sqrt(length(density2m)))
+```
+
+
 Measurements:
         1st                                                     2nd              
 2023:  10,12,16,18,20,22,24,26,34,36,38,40               all other than  2,4,6,8,14,28,30     
@@ -581,6 +595,8 @@ Phi.table
 
 
 Robust design and multistate   
+Do I need to add a dummy second measurement for 2025 that wasn't taken?   
+Can only have one strata per primary period
 ```{r}
 
 ##Need doubles in 2023 as well for the ones transect 10 on, that got measured
@@ -638,26 +654,15 @@ surv_wide_robust <-
   left_join(data.frame(survey2bind[,c(1:5)]), by = c("transectID" = "transectID", "recordedBy" = "recordedBy", 
                                                      "Date" = "Date")) %>%
     filter(heightInCentimeters > 0 & !is.na(heightInCentimeters)) %>%
-    # group_by(surveyID, transectID, type_CT_TT) %>%
-    # summarise(n = n()) %>%
-    # ggplot(  aes(surveyID, n, color = as.factor(transectID)))+
-    # geom_point(position = position_dodge(width = 0.1)) +
-    # geom_line(position = position_dodge(width = 0.1)) +
-    # facet_wrap(~ type_CT_TT)
-  ### Going to need to set p to zero for the ones with only one measurement in 2023 and 2024
   arrange(surveyID) %>%
   replace_na(list(reproductiveStatus = 0)) %>%
+    ## Need to have each year (primary period) have only one strata
+  group_by(plantID, Year) %>%
   mutate(Obs = case_when( (heightInCentimeters > 0 & reproductiveStatus == 0) ~ "V",
-                          (heightInCentimeters > 0 & reproductiveStatus == 1) ~ "R",
-                          heightInCentimeters == 0 ~ "0"
-                          # ,
-                          # is.na(heightInCentimeters) ~ "0"
-                          )) %>%
-  # dplyr::select(plantID,surveyID,Obs, transectID, transplantSeason, isTransplant, recordedBy) %>% 
+                          any(heightInCentimeters > 0 & reproductiveStatus == 1) ~ "R",
+                          heightInCentimeters == 0 ~ "0")) %>%
+    ungroup() %>%
     ## One accidental duplicate record in the same survey, same observers
-    # group_by(plantID, surveyID) %>%
-    # add_count() %>%
-    # filter(n > 1) 
     filter(!(plantID == 1629 & surveyID == 3 & Obs == "0")) %>%
     pivot_wider(names_from = surveyID,
               id_cols = c(plantID,transectID,isTransplant,transplantSeason), ## The recorded by is only each survey
@@ -666,7 +671,9 @@ surv_wide_robust <-
               names_prefix = "Survey"
               ) %>%
   arrange(transectID, plantID, transplantSeason) %>%
-  unite(ch, Survey1:Survey5, sep = "")
+  unite(ch, Survey1:Survey5, sep = "") %>% 
+  ### remove once we have 2026 data
+  mutate(ch = paste0(ch, "0"))
 
 surv_wide_robust %>% data.frame() %>% head(20)
 plants2025 %>% filter(plantID == 2057) ## Fixed by adding replace_na fro reproductiveStatus
@@ -722,7 +729,8 @@ Transect    surveys
 29            2,3,4,5         
 30          1,2,3,4,5         
 31            2,3,  5         
-32          1,2,3,  5         
+32          1,2,3,  5 
+33            2,3,  5 
 34          1,2,3,4,5         
 35            2,3,  5         
 36          1,2,3,  5         
@@ -731,7 +739,18 @@ Transect    surveys
 39            2,3,  5         
 40          1,2,3,  5   
 
+# Huggins Closed Robust Design Multi-state with State Probabilities  
+"CRDMSOHug"
 
+
+We used a Robust design with a Huggins’ estimator in Program MARK (accessed through RMark ) to estimate survival and a Pradel Robust Model with survival and Lambda with Huggins’ closed capture estimator in Program MARK to estimate the population growth rate (Pollock, 1982; White et al., 2001). 
+
+
+S(s): survival rate between primary occasions for state s 
+Psi(r,s): transition between states between primary periods from r to state s
+Omega: probability of being in each of the states
+p(s,t): apparent detection
+c(s,t): true detection 
 ```{r}
 
 ## Three have NA pepe_multi[1038,], 1075, and 1387
@@ -754,8 +773,6 @@ pepe_multi <- surv_wide_robust %>%
          Type = as.factor(type_CT_TT)) %>%
   filter(!is.na(Trans))
 
-pepe_multi %>%
-  filter((grepl("R",ch) | grepl("V",ch)))
   
 
 dmPlot <-model.matrix(~ -1 + Trans, pepe_multi)
@@ -767,31 +784,73 @@ pepe_multi %>%
   mutate(Trans40 = paste(Trans40, ";", sep= "")) %>%
   write.table(file = "Data/Pepe_mark_multistate.inp", sep = " ", col.names = FALSE, row.names = FALSE)
 
-pepeCJS <- convert.inp("Data/Pepe_mark_multistate.inp",
+pepeRobust <- convert.inp("Data/Pepe_mark_multistate.inp",
                        group.df = plotdf,
                        covariates = NULL,
                        use.comments = FALSE)  
 
+# 0 for secondary and 1 for last secondary !! This is the interval between occasions, should be one less than surveys, but between 4 and 5 is primary, a year!? So there is a dummy second 2025 observation that doesn't exist
+time.intervals <- c(0,1,0,1,0)
 
-pepe.pr <- process.data(pepe_multi, model = "Multistrata", begin.time = 2023, groups = "Trans",
-                               strata.labels = c("R","V"))
+pepe.pr <- process.data(pepeRobust, model = "CRDMSOHug", begin.time = 2023, groups = "Trans",
+                               # strata.labels = c("R","V"),
+                        time.intervals = time.intervals)
 pepe.dd <- make.design.data(pepe.pr)
 
-## Need to index the plots not seen and fix them to 0. Transects 15 (starts new 2024), 16, and 21, just 16 in 202, remove until 2026 data
-pindex <- pepe.dd$p
-p.missing16 <- pindex %>%
-  mutate(cohort = as.numeric(as.character(cohort))) %>%
-  filter(group %in% c(16) & cohort == 2024)
+pepe.dd$Psi$stratum <- factor(pepe.dd$Psi$stratum, levels = c("R","V"))
+pepe.dd$S$stratum <- factor(pepe.dd$S$stratum, levels = c("R","V"))
+pepe.dd$Omega$stratum <- factor(pepe.dd$Omega$stratum, levels = c("R","V"))
+pepe.dd$p$stratum <- factor(pepe.dd$p$stratum, levels = c("R","V"))
+pepe.dd$c$stratum <- factor(pepe.dd$c$stratum, levels = c("R","V"))
 
+table(pepe.dd$Psi[,c("stratum","tostratum")])
+
+## Need to index the plots not seen and fix them to 0. Transects 15 (starts new 2024), 16, and 21, just 16 in 2023 and 2024, remove 15 and 21
+pindex <- pepe.dd$p  ## Each session has 1 and 2, no observations session 2 of 2025. time, not Time (that is 0 and 1)
+p.missing1 <- pindex %>%
+  filter(group %in% c(1,3,5,7,9,11,17,19,23,25,27,29,31,33,35,37,39) & session == "2023" & time == "1")
+p.missing3 <- pindex %>%
+  filter(group %in% c(16) & session == "2024" & time == "1")
+p.missing4 <- pindex %>%
+  filter(group %in% c(12,16,20,25,31,33,35,36,38,39,40) & session == "2024" & time == "2")
+p.missing6 <- pindex %>%
+  filter(session == "2025" & time == "2")
+p.missingTransect <- pindex %>%
+  filter(group %in% c(15,21))
 ## Fixed indices
-# p.indices <- c(p.missing16$par.index)
-# p.values <- rep(0, length(pindex))
+p.indices <- c(p.missing1$par.index,p.missing3$par.index,p.missing4$par.index,p.missingTransect$par.index, p.missing6$par.index)
+p.values <- rep(0, length(p.indices))
 
 
-CJS.pepe <- mark(pepe.pr, pepe.dd, model = "CJS",
-                 model.parameters = list(p = list(formula = ~ 1),
-                                                    # fixed = list(index = p.indices, value = p.values)),
-                                         Phi = list(formula = ~ 1 + Trans)))
+## recapture probabilities
+cindex <- pepe.dd$p  ## Each session has 1 and 2, no observations session 2 of 2025. time, not Time (that is 0 and 1)
+c.missing1 <- cindex %>%
+  filter(group %in% c(1,3,5,7,9,11,17,19,23,25,27,29,31,33,35,37,39) & session == "2023" & time == "1")
+c.missing3 <- cindex %>%
+  filter(group %in% c(16) & session == "2024" & time == "1")
+c.missing4 <- cindex %>%
+  filter(group %in% c(12,16,20,25,31,33,35,36,38,39,40) & session == "2024" & time == "2")
+c.missing6 <- cindex %>%
+  filter(session == "2025" & time == "2")
+c.missingTransect <- cindex %>%
+  filter(group %in% c(15,21))
+## Fixed indices
+c.indices <- c(c.missing1$par.index,c.missing3$par.index,c.missing4$par.index,c.missingTransect$par.index, c.missing6$par.index)
+c.values <- rep(0, length(c.indices))
+
+Huggins <- mark(pepe.pr, pepe.dd, model = "CRDMSOHug",
+                time.intervals = time.intervals, begin.time = 2023)
+
+
+Huggins.pepe <- mark(pepe.pr, pepe.dd, model = "CRDMSOHug",
+                     time.intervals = time.intervals, begin.time = 2023,
+                     model.parameters = list(S = list(formula = ~ stratum),
+                                             Psi = list(formula = ~ stratum:tostratum),
+                                             Omega = list(formula = ~ stratum),
+                                             p = list(formula = ~ stratum,
+                                                      fixed = list(index = p.indices, value = p.values)),
+                                             c = list(formula = ~ stratum, 
+                                                      fixed = list(index = c.indices, value = c.values))))
 
 
 
