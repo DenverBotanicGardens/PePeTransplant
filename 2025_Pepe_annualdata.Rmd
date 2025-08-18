@@ -67,9 +67,7 @@ plants2025 <- allDataFix
 ## The reproductive status is "1" if there are any fruit
 plants2025 <- plants2025 %>%
   mutate(Reproductive.Status = case_when(Number.Reproductive.Structures > 0 ~ 1,
-                                         TRUE ~ Reproductive.Status)) %>%
-  rename(reproductiveStatus = Reproductive.Status,
-         numberReproductiveStructures = Number.Reproductive.Structures)
+                                         TRUE ~ Reproductive.Status))
 
 ## Merge with transplant and transplant season from plants2024
 plants2025 <- plants2025 %>%
@@ -249,6 +247,7 @@ plants25toadd <- plants2025 %>%
   rename(heightInCentimeters = Height.in.cm) %>%
   rename(basalWidthInCentimeters = Basal.Width.in.cm) %>%
   rename(numberReproductiveStructures = Number.Reproductive.Structures) %>%
+  rename(reproductiveStatus = Reproductive.Status) %>%
   rename(comments = Comments) %>%
   filter(date != "plant not recorded in 2025") %>%
   mutate(recordedBy = case_when(recordedBy == "" ~ NA,
@@ -263,6 +262,9 @@ plants25toadd %>%
 
 surv_wide <- 
   surv2023_2024 %>%
+  mutate(transplantSeason = case_when( !(transplantSeason %in% c("Spring", "Fall")) ~ NA,
+                                       TRUE ~ transplantSeason)) %>%
+  mutate(transectPosition = as.numeric(transectPosition)) %>%
   bind_rows(plants25toadd) %>%
     mutate(date = case_when(date == "6/25/2025" ~ "6/24/2025",
                             ## To make averages for the few doubles in 2023
@@ -285,11 +287,6 @@ surv_wide <-
                                            n == 1 ~ max(basalWidthInCentimeters)),
            numberReproductiveStructures = case_when(n == 2 ~ mean(numberReproductiveStructures),
                                            n == 1 ~ max(numberReproductiveStructures))) %>%
-  # mutate(Obs = case_when( (heightInCentimeters > 0 & reproductiveStatus == 0) ~ "V",
-  #                         (heightInCentimeters > 0 & reproductiveStatus == 1) ~ "R",
-  #                         heightInCentimeters == 0 ~ "0",
-  #                         is.na(heightInCentimeters) ~ "0")) %>%
-    # dplyr::select(plantID:numberReproductiveStructures,transectID:isTransplant) %>% 
   ungroup() %>%
     distinct() %>%
   mutate(ch = case_when(heightInCentimeters > 0 ~ 1,
@@ -302,12 +299,6 @@ surv_wide <-
               ) %>%
   arrange(transectID,transplantSeason) %>%
   distinct()
-
-
-surv_wide %>%
-  select(plantID, transectID, `2023-10-16`:`6/24/2025`) %>%
-  arrange(transectID, plantID)
-
 
 
 ## CJS
@@ -370,11 +361,11 @@ Cormick-Jolly-Seber
 pepe.pr <- process.data(pepeCJS, model = "CJS", begin.time = 2023, groups = "Trans")
 pepe.dd <- make.design.data(pepe.pr)
 
-## Need to index the plots not seen and fix them to 0. Transects 15 (starts new 2024), 16, and 21, just 16 in 202, remove until 2026 data
-pindex <- pepe.dd$p
-p.missing16 <- pindex %>%
-  mutate(cohort = as.numeric(as.character(cohort))) %>%
-  filter(group %in% c(16) & cohort == 2024)
+## Need to index the plots not seen and fix them to 0. Transects 15 (starts new 2024), 16, and 21, just 16 in 2025, remove until 2026 data
+# pindex <- pepe.dd$p
+# p.missing16 <- pindex %>%
+#   mutate(cohort = as.numeric(as.character(cohort))) %>%
+#   filter(group %in% c(16) & cohort == 2024)
 
 ## Fixed indices
 # p.indices <- c(p.missing16$par.index)
@@ -383,7 +374,7 @@ p.missing16 <- pindex %>%
 
 CJS.pepe <- mark(pepe.pr, pepe.dd, model = "CJS",
                  model.parameters = list(p = list(formula = ~ 1),
-                                                    # fixed = list(index = p.indices, value = p.values)),
+                                                    # fixed = list(index = p.indices, value = p.values),
                                          Phi = list(formula = ~ 1 + Trans)))
 
 
@@ -589,15 +580,15 @@ Phi.table
 
 
 
-############# START HERE
-Working other than no surveys in 2025! What!?!
-
 Robust design and multistate   
 ```{r}
 
 ##Need doubles in 2023 as well for the ones transect 10 on, that got measured
 
 survey2bind <- surv2023_2024 %>%
+  mutate(transplantSeason = case_when( !(transplantSeason %in% c("Spring", "Fall")) ~ NA,
+                                       TRUE ~ transplantSeason)) %>%
+  mutate(transectPosition = as.numeric(transectPosition)) %>%
   bind_rows(plants25toadd) %>%
   filter(transectID != "") %>%
     mutate(date = case_when(date == "6/25/2025" ~ "2025-06-24",
@@ -622,29 +613,30 @@ survey2bind <- surv2023_2024 %>%
                               (survID == 2 & Date == "2024-06-24") ~ 4, ## and the other one is four
                               Date == "2025-06-24" ~ 5,
                               TRUE ~ surveyID))
-# %>%
-#   print(n = 100)
+
+
+survey2bind %>% print(n = 10)
   
 ## Now add number for 2023 survey 1, 2024 has surveys 2 and 3 when doubled, 2025 has survey 4
 surv_wide_robust <-
   surv2023_2024 %>%
-  bind_rows(plants25toadd) %>%
+  mutate(transplantSeason = case_when( !(transplantSeason %in% c("Spring", "Fall")) ~ NA,
+                                       TRUE ~ transplantSeason)) %>%
+  mutate(transectPosition = as.numeric(transectPosition)) %>%
+  bind_rows(plants25toadd) %>% 
   filter(transectID != "") %>%
     mutate(date = case_when(date == "6/25/2025" ~ "2025-06-24",
                             date == "6/24/2025" ~ "2025-06-24",
                             TRUE ~ date)) %>%
-  mutate(Date = as.Date(date)) %>%
+  mutate(Date = as.Date(date)) %>%  # group_by(Date) %>% summarise(n = n()) 
   mutate(Year = format(as.Date(Date, format="%Y-%m-%d"),"%Y")) %>%
   filter(!(transectID %in% c(15, 21,16))) %>%
   ## Can ignore the 5 repeat collections of Fall transplants
   filter(recordedBy != "MEDL_AJ") %>%
   left_join(trans2024, by = c("transectID" = "transectId")) %>%
-  ## Can ignore the 5 repeat collections of Fall transplants
-  filter(recordedBy != "MEDL_AJ") %>%
   select(Date,plantID:numberReproductiveStructures,transectID:transplantSeason,isTransplant, recordedBy, type_CT_TT) %>%
   left_join(data.frame(survey2bind[,c(1:5)]), by = c("transectID" = "transectID", "recordedBy" = "recordedBy", 
                                                      "Date" = "Date")) %>%
-    ## Why are there only measures in survey 2??
     filter(heightInCentimeters > 0 & !is.na(heightInCentimeters)) %>%
     # group_by(surveyID, transectID, type_CT_TT) %>%
     # summarise(n = n()) %>%
@@ -653,11 +645,8 @@ surv_wide_robust <-
     # geom_line(position = position_dodge(width = 0.1)) +
     # facet_wrap(~ type_CT_TT)
   ### Going to need to set p to zero for the ones with only one measurement in 2023 and 2024
-    
-## Control only in 2023-10-16, none in 2023-05-XX
-  
-      
   arrange(surveyID) %>%
+  replace_na(list(reproductiveStatus = 0)) %>%
   mutate(Obs = case_when( (heightInCentimeters > 0 & reproductiveStatus == 0) ~ "V",
                           (heightInCentimeters > 0 & reproductiveStatus == 1) ~ "R",
                           heightInCentimeters == 0 ~ "0"
@@ -676,46 +665,137 @@ surv_wide_robust <-
               values_fill = "0",
               names_prefix = "Survey"
               ) %>%
-  arrange(transectID,transplantSeason) 
+  arrange(transectID, plantID, transplantSeason) %>%
+  unite(ch, Survey1:Survey5, sep = "")
 
 surv_wide_robust %>% data.frame() %>% head(20)
+plants2025 %>% filter(plantID == 2057) ## Fixed by adding replace_na fro reproductiveStatus
+
+## Any that are always dead like AsMi?? Nope, all look good, have at least one V or R
 surv_wide_robust %>%
-  filter(Survey5 > 0)
+  filter(!(grepl("R",ch) | grepl("V",ch)))
 
-## Should be four for each of them, but some we didn't get double counts in 2024
-surv_wide_robust %>%
-  group_by(transectID,survey) %>%
-  summarise(n = n()) %>%
-  group_by(transectID) %>%
-  summarise(n = n()) %>%
-  print(n = 38)
-## Only keep the combinations of surveys for each transect and number them either 1:4 or 1,2,4
-surv_wide_robust %>%
-  group_by(transectID,survey) %>%
-  summarise(plants = n()) %>%
-  group_by(transectID) %>%
-  add_count() %>%
-  # mutate(surveyNum = case_when(n == 3 ~ c(1,2,4),
-  #                              n == 4 ~ 1:4))
-  mutate(survey = as.numeric(as.factor(survey))) %>%
-  mutate(survey = case_when((n == 3 & survey == 3) ~ 4,
-                            TRUE ~ survey)) %>%
-  print(n = 100)
-
-## Any that are always dead like AsMi??
-surv_wide <- surv_wide %>%
-  filter((grepl("R",ch) | grepl("V",ch)))
-
-
-## Multistrata 
-surv_wide <- surv_wide %>%
-  replace_na(list(`2023-10-16` = "0",
-                  `2024-06-24` = "0",
-                  `6/24/2025` = "0")) %>%
-  unite(ch, `2023-10-16`:`6/24/2025`, sep = "")
+surv_wide_robust %>% head()
 
 ```
 
+
+Need to fix indeces for those that don't have double in 2024, only some have double, same for 2023  
+```{r}
+surv2023_2024 %>%
+  group_by(transectID, date, recordedBy) %>%
+  summarise(n = n()) %>%
+  # group_by(transectID) %>%
+  # summarise(surveys = n()) %>%
+  # filter(surveys == 4) %>%
+  print(n = 150)
+```
+
+Transect    surveys
+1             2,3,4,5            
+2           1,2,3,4,5           
+3             2,3,4,5            
+4           1,2,3,4,5            
+5             2,3,4,5               
+6           1,2,3,4,5            
+7             2,3,4,5               
+8           1,2,3,4,5         
+9             2,3,4,5               
+10          1,2,3,4,5                
+11            2,3,4,5               
+12          1,2,3,  5              
+14          1,2,3,4,5         
+15            2,3,4     New nail in 3 and 4, Then lost again!!!, remove
+16          1,2,    5   No data in 2024
+17            2,3,4,5         
+18          1,2,3,4,5         
+19            2,3,4,5         
+20          1,2,3,  5         
+21                      lost, remove
+22          1,2,3,4,5         
+23            2,3,4,5         
+24          1,2,3,4,5         
+25            2,3,  5         
+26          1,2,3,4,5         
+27            2,3,4,5         
+28          1,2,3,4,5         
+29            2,3,4,5         
+30          1,2,3,4,5         
+31            2,3,  5         
+32          1,2,3,  5         
+34          1,2,3,4,5         
+35            2,3,  5         
+36          1,2,3,  5         
+37            2,3,4,5         
+38          1,2,3,  5         
+39            2,3,  5         
+40          1,2,3,  5   
+
+
+```{r}
+
+## Three have NA pepe_multi[1038,], 1075, and 1387
+# pepe_multi[c(1038,1075,1387),]
+## Plants with NA at the third (1165 and 732) and second 928 survey
+finderrors <- c(1165,732,928)
+surv2023_2024 %>%
+  filter(plantID %in% finderrors) %>%
+  mutate(date = as.Date(date)) %>%
+  arrange(plantID, date)
+
+surv_wide_robust %>%
+  filter(plantID %in% finderrors)
+
+pepe_multi <- surv_wide_robust %>%
+  filter(!(plantID %in% finderrors)) %>%
+  left_join(trans2024[,c(2:4)], by = c("transectID" = "transectId")) %>%
+  filter(isTransplant != 1) %>%
+  mutate(Trans = as.factor(transectID),
+         Type = as.factor(type_CT_TT)) %>%
+  filter(!is.na(Trans))
+
+pepe_multi %>%
+  filter((grepl("R",ch) | grepl("V",ch)))
+  
+
+dmPlot <-model.matrix(~ -1 + Trans, pepe_multi)
+dimnames(dmPlot)[[2]][length(dimnames(dmPlot)[[2]])] ## The last one to add a semicolon to
+
+pepe_multi %>%
+  dplyr::select(ch) %>%
+  bind_cols(dmPlot) %>%
+  mutate(Trans40 = paste(Trans40, ";", sep= "")) %>%
+  write.table(file = "Data/Pepe_mark_multistate.inp", sep = " ", col.names = FALSE, row.names = FALSE)
+
+pepeCJS <- convert.inp("Data/Pepe_mark_multistate.inp",
+                       group.df = plotdf,
+                       covariates = NULL,
+                       use.comments = FALSE)  
+
+
+pepe.pr <- process.data(pepe_multi, model = "Multistrata", begin.time = 2023, groups = "Trans",
+                               strata.labels = c("R","V"))
+pepe.dd <- make.design.data(pepe.pr)
+
+## Need to index the plots not seen and fix them to 0. Transects 15 (starts new 2024), 16, and 21, just 16 in 202, remove until 2026 data
+pindex <- pepe.dd$p
+p.missing16 <- pindex %>%
+  mutate(cohort = as.numeric(as.character(cohort))) %>%
+  filter(group %in% c(16) & cohort == 2024)
+
+## Fixed indices
+# p.indices <- c(p.missing16$par.index)
+# p.values <- rep(0, length(pindex))
+
+
+CJS.pepe <- mark(pepe.pr, pepe.dd, model = "CJS",
+                 model.parameters = list(p = list(formula = ~ 1),
+                                                    # fixed = list(index = p.indices, value = p.values)),
+                                         Phi = list(formula = ~ 1 + Trans)))
+
+
+
+```
 
 
 ## Something is wrong
