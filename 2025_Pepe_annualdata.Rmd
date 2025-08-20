@@ -12,11 +12,11 @@ output: R script
       Transect 21 is lost     
       
 2025:    
-      Found some plots, lost another?? Lost one of them
+      Transect 16 was found, Remove transects 15 adn 21
 
 ```{r}
 
-# rm(list=ls())
+rm(list=ls())
 library(R2jags)
 library(runjags)
 # library(mcmcplots)
@@ -267,10 +267,15 @@ plants25toadd <- plants2025 %>%
   mutate(recordedBy = case_when(recordedBy == "" ~ NA,
                                 TRUE ~ recordedBy)) %>%
   arrange(transectID, recordedBy) %>%
-  fill(recordedBy) 
+  fill(recordedBy) %>%
+  filter(transectID != "") %>%
+  mutate(date = case_when(date == "6/25/2025" ~ "2025-06-24",
+                          date == "6/24/2025" ~ "2025-06-24",
+                            TRUE ~ date))
+
 
 plants25toadd %>%
-  group_by(transectID, recordedBy) %>%
+  group_by(transectID, recordedBy, date) %>%
   summarise(n = n()) %>%
   print(n = 47)
 
@@ -375,16 +380,6 @@ Cormick-Jolly-Seber
 pepe.pr <- process.data(pepeCJS, model = "CJS", begin.time = 2023, groups = "Trans")
 pepe.dd <- make.design.data(pepe.pr)
 
-## Need to index the plots not seen and fix them to 0. Transects 15 (starts new 2024), 16, and 21, just 16 in 2025, remove until 2026 data
-# pindex <- pepe.dd$p
-# p.missing16 <- pindex %>%
-#   mutate(cohort = as.numeric(as.character(cohort))) %>%
-#   filter(group %in% c(16) & cohort == 2024)
-
-## Fixed indices
-# p.indices <- c(p.missing16$par.index)
-# p.values <- rep(0, length(pindex))
-
 
 CJS.pepe <- mark(pepe.pr, pepe.dd, model = "CJS",
                  model.parameters = list(p = list(formula = ~ 1),
@@ -468,17 +463,6 @@ Cormack-Jolly-Seber
 
 pepe.pr <- process.data(pepeCJS, model = "CJS", begin.time = 2023, groups = "Transplant")
 pepe.dd <- make.design.data(pepe.pr)
-
-## Need to index the plots not seen and fix them to 0. Transects 15 (starts new 2024), 16, and 21, just 16 in 202, remove until 2026 data
-# pindex <- pepe.dd$p
-# p.missing16 <- pindex %>%
-#   mutate(cohort = as.numeric(as.character(cohort))) %>%
-#   filter(group %in% c(16) & cohort == 2024)
-
-## Fixed indices
-# p.indices <- c(p.missing16$par.index)
-# p.values <- rep(0, length(pindex))
-
 
 CJS.pepe <- mark(pepe.pr, pepe.dd, model = "CJS",
                  model.parameters = list(p = list(formula = ~ 1),
@@ -599,29 +583,35 @@ Do I need to add a dummy second measurement for 2025 that wasn't taken?
 Can only have one strata per primary period
 ```{r}
 
-##Need doubles in 2023 as well for the ones transect 10 on, that got measured
 
+##Need doubles in 2023 as well for the ones transect 10 on, that got measured
+# Label Spring as Survey1, Fall Survey2, first and second (3,4) 2024, and 5 as 2025. Need a dummy 6th secondary. 
 survey2bind <- surv2023_2024 %>%
+  # mutate(recordedBy = case_when(recordedBy == "Michael Bone, Stanton Schell" ~ "MB_SS",
+  #                               recordedBy == "Mike Bone, Stanton Schell" ~ "MB_SS",
+  #                               recordedBy == "Arich Fruehling, Leah Veldhuisen" ~ "AF_LV",
+  #                               recordedBy == "Geena Poulter, Michelle DePrenger-Levin" ~ "GP_MEDL",
+  #                               recordedBy == "Michelle DePrenger-Levin" ~ "MEDL",
+  #                               recordedBy == "Michelle DePrenger-Levin, Adriana Jacobi" ~ "MEDL_AJ",
+  #                               recordedBy == "Michael Guidi, Brooke Washburn, Syed Jalalzai" ~ "MG_BW_SJ"
+  #                               )) %>%
   mutate(transplantSeason = case_when( !(transplantSeason %in% c("Spring", "Fall")) ~ NA,
                                        TRUE ~ transplantSeason)) %>%
   mutate(transectPosition = as.numeric(transectPosition)) %>%
   bind_rows(plants25toadd) %>%
-  filter(transectID != "") %>%
-    mutate(date = case_when(date == "6/25/2025" ~ "2025-06-24",
-                            date == "6/24/2025" ~ "2025-06-24",
-                            TRUE ~ date)) %>%
   mutate(Date = as.Date(date)) %>%
-  mutate(Year = format(as.Date(Date, format="%Y-%m-%d"),"%Y")) %>%
+  ## Still have all the surveys
+  # mutate(Year = format(as.Date(Date, format="%Y-%m-%d"),"%Y")) %>%
   filter(!(transectID %in% c(15, 21,16))) %>%
   ## Can ignore the 5 repeat collections of Fall transplants
-  filter(recordedBy != "MEDL_AJ") %>%
-  left_join(trans2024, by = c("transectID" = "transectId")) %>%
-  select(Date,Year,plantID:numberReproductiveStructures,transectID:transplantSeason,isTransplant, recordedBy) %>%
+  # filter(recordedBy != "MEDL_AJ") %>%
+  left_join(trans2024[,c("transectId","type_CT_TT")], by = c("transectID" = "transectId")) %>%
+  select(Date,plantID:numberReproductiveStructures,transectID:transplantSeason,isTransplant, recordedBy) %>%
   mutate(surveyID = as.numeric(as.factor(paste(date,recordedBy)))) %>%
   arrange(Date) %>%
-  group_by(transectID,surveyID,Date,Year,recordedBy) %>%
+  group_by(transectID,surveyID,Date,recordedBy) %>%
   summarise(plants = n()) %>%
-  group_by(transectID, Year) %>%
+  group_by(transectID) %>%
   mutate(survID = row_number()) %>%
   mutate(surveyID = case_when(Date == "2023-05-31" ~ 1,
                               Date == "2023-10-16" ~ 2,
@@ -631,7 +621,23 @@ survey2bind <- surv2023_2024 %>%
                               TRUE ~ surveyID))
 
 
-survey2bind %>% print(n = 10)
+survey2bind %>%
+  group_by(recordedBy, Date, transectID) %>%
+  summarise(n = n()) %>%
+  arrange(transectID, Date)
+  print(n = 40)
+
+  surv2023_2024 %>%
+    filter(recordedBy == "MEDL_AJ")
+  
+  surv2023_2024 %>%
+    filter(isTransplant == 1 & transectID == 34)
+  
+survey2bind %>% 
+  # arrange(transectID, surveyID) %>%
+  group_by(Date, transectID) %>%
+  summarise(n = n()) %>%
+  print(n = 40)
   
 ## Now add number for 2023 survey 1, 2024 has surveys 2 and 3 when doubled, 2025 has survey 4
 surv_wide_robust <-
@@ -645,10 +651,10 @@ surv_wide_robust <-
                             date == "6/24/2025" ~ "2025-06-24",
                             TRUE ~ date)) %>%
   mutate(Date = as.Date(date)) %>%  # group_by(Date) %>% summarise(n = n()) 
-  mutate(Year = format(as.Date(Date, format="%Y-%m-%d"),"%Y")) %>%
+  # mutate(Year = format(as.Date(Date, format="%Y-%m-%d"),"%Y")) %>%
   filter(!(transectID %in% c(15, 21,16))) %>%
   ## Can ignore the 5 repeat collections of Fall transplants
-  filter(recordedBy != "MEDL_AJ") %>%
+  # filter(recordedBy != "MEDL_AJ") %>%
   left_join(trans2024, by = c("transectID" = "transectId")) %>%
   select(Date,plantID:numberReproductiveStructures,transectID:transplantSeason,isTransplant, recordedBy, type_CT_TT) %>%
   left_join(data.frame(survey2bind[,c(1:5)]), by = c("transectID" = "transectID", "recordedBy" = "recordedBy", 
@@ -656,16 +662,17 @@ surv_wide_robust <-
     filter(heightInCentimeters > 0 & !is.na(heightInCentimeters)) %>%
   arrange(surveyID) %>%
   replace_na(list(reproductiveStatus = 0)) %>%
-    ## Need to have each year (primary period) have only one strata
+  mutate(Obs = case_when(heightInCentimeters == 0 ~ "0",
+                         (heightInCentimeters > 0 & reproductiveStatus == 0) ~ "V",
+                         (heightInCentimeters > 0 & reproductiveStatus == 1) ~ "R")) %>%
+    ## Need to have each year (primary period) have only one strata; sapply 
   group_by(plantID, Year) %>%
-  mutate(Obs = case_when( (heightInCentimeters > 0 & reproductiveStatus == 0) ~ "V",
-                          any(heightInCentimeters > 0 & reproductiveStatus == 1) ~ "R",
-                          heightInCentimeters == 0 ~ "0")) %>%
-    ungroup() %>%
-    ## One accidental duplicate record in the same survey, same observers
+    mutate(Obs = if_else(mapply(grepl,"R", Obs), gsub("V","R",Obs), Obs)) %>%
+    ungroup() %>% # arrange(plantID, Date) %>% dplyr::select(plantID, Date, reproductiveStatus, Obs) %>% print(n = 100)
+      ## One accidental duplicate record in the same survey, same observers
     filter(!(plantID == 1629 & surveyID == 3 & Obs == "0")) %>%
     pivot_wider(names_from = surveyID,
-              id_cols = c(plantID,transectID,isTransplant,transplantSeason), ## The recorded by is only each survey
+              id_cols = c(plantID,transectID,isTransplant,transplantSeason, type_CT_TT), ## The recorded by is only each survey
               values_from = Obs,
               values_fill = "0",
               names_prefix = "Survey"
@@ -673,16 +680,16 @@ surv_wide_robust <-
   arrange(transectID, plantID, transplantSeason) %>%
   unite(ch, Survey1:Survey5, sep = "") %>% 
   ### remove once we have 2026 data
-  mutate(ch = paste0(ch, "0"))
-
+  mutate(ch = paste0(ch, "0")) 
+  
+  
+  
 surv_wide_robust %>% data.frame() %>% head(20)
 plants2025 %>% filter(plantID == 2057) ## Fixed by adding replace_na fro reproductiveStatus
 
 ## Any that are always dead like AsMi?? Nope, all look good, have at least one V or R
 surv_wide_robust %>%
   filter(!(grepl("R",ch) | grepl("V",ch)))
-
-surv_wide_robust %>% head()
 
 ```
 
@@ -767,13 +774,13 @@ surv_wide_robust %>%
 
 pepe_multi <- surv_wide_robust %>%
   filter(!(plantID %in% finderrors)) %>%
-  left_join(trans2024[,c(2:4)], by = c("transectID" = "transectId")) %>%
   filter(isTransplant != 1) %>%
   mutate(Trans = as.factor(transectID),
          Type = as.factor(type_CT_TT)) %>%
   filter(!is.na(Trans))
 
-  
+plotdf <- pepe_multi %>%
+  distinct(Trans)
 
 dmPlot <-model.matrix(~ -1 + Trans, pepe_multi)
 dimnames(dmPlot)[[2]][length(dimnames(dmPlot)[[2]])] ## The last one to add a semicolon to
