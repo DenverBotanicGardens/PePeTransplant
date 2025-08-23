@@ -26,6 +26,7 @@ library(tidyr)
 library(ggplot2)
 library(patchwork)
 library(RMark)
+library(popbio)
 
 library(lme4)
 require(AICcmodavg)
@@ -294,8 +295,8 @@ surv_wide <-
   ## Can ignore the 5 repeat collections of Fall transplants
   filter(recordedBy != "MEDL_AJ") %>%
   # filter(!(transectID %in% c(15,16, 21))) %>%
-  select(date,plantID:numberReproductiveStructures,transectID:isTransplant) %>%
-  arrange(date) %>%
+  select(Date,plantID:numberReproductiveStructures,transectID:isTransplant) %>%
+  arrange(Date) %>%
   group_by(plantID, date) %>%
   add_count() %>%
     mutate(heightInCentimeters = case_when(n == 2 ~ mean(heightInCentimeters),
@@ -324,8 +325,8 @@ surv_wide <-
 surv_wide <- surv_wide %>%
   replace_na(list(`2023-10-16` = 0,
                   `2024-06-24` = 0,
-                  `6/24/2025` = 0)) %>%
-  unite(ch, `2023-10-16`:`6/24/2025`, sep = "")
+                  `2025-06-24` = 0)) %>%
+  unite(ch, `2023-10-16`:`2025-06-24`, sep = "")
 
 
 ## Remove the four without alive ever
@@ -339,6 +340,8 @@ surv_wide <- surv_wide %>%
 ```
 
 
+
+
 ## Shouldn't penalize plots for having transplants with lower survival 
 ```{r}
 pepe_ch <- surv_wide %>%
@@ -347,9 +350,6 @@ pepe_ch <- surv_wide %>%
   mutate(Trans = as.factor(transectID),
          Type = as.factor(type_CT_TT)) %>%
   filter(!is.na(Trans))
-
-pepe_ch %>%
-  filter(isTransplant != 1)
 
 plotdf <- pepe_ch %>%
   distinct(Trans) 
@@ -397,17 +397,19 @@ Phi.table <- get.real(CJS.pepe, "Phi", se = TRUE) %>%
 ## Difference in survival between Control and Transplant, color is by block
 ggsave(filename = "Figures/SurvivalCJS_block.jpg",
 
-ggplot(Phi.table, aes(Type, estimate, color = as.factor(block))) +
-  geom_point(position = position_dodge(width = .3)) +
-  geom_errorbar(aes(ymin = lcl, ymax = ucl),position = position_dodge(width = .3))+
+ggplot(Phi.table, aes(Type, estimate, color = as.factor(block), group =  as.factor(block))) +
+  geom_point(position = position_dodge(width = .75)) +
+  geom_errorbar(aes(ymin = lcl, ymax = ucl),position = position_dodge(width = .75))+
+  geom_line(linetype = "dashed", position = position_dodge(width = .75))+
   theme_bw() +
-  ylab("Survival")+
+  ylab("Survival\nin-situ population")+
   xlab("Transect") +
-  guides(color = "none")+
-  scale_x_discrete(labels = c("Control","Transplant"))
+  # guides(color = "none")+
+  scale_x_discrete(labels = c("Control","Transplant"))+
+  scale_color_discrete("Block")
 
 
-, width=120, height=100,units='mm', dpi=300)  
+, width=150, height=150,units='mm', dpi=300)  
 
 Phi.table
 
@@ -577,6 +579,56 @@ Phi.table
 ####################################################################################################################
 
 
+##### Pradel recruitment ###################################
+```{r}
+
+## From pepeCJS above, without any transplants
+pepeCJS <- convert.inp("Data/Pepe_mark.inp",
+                       group.df = plotdf,
+                       covariates = NULL,
+                       use.comments = FALSE)
+
+pepe.proc.Prad <- process.data(pepeCJS, model = "Pradrec", begin.time = 2023, groups = "Trans")
+pepe.dd.Prad <- make.design.data(pepe.proc.Prad)
+
+Pradel.pepe <- mark(pepe.proc.Prad, pepe.dd.Prad, model = "Pradrec",
+                    model.parameters = list(p = list(formula = ~ 1),
+                                            Phi = list(formula = ~ 1),
+                                            f = list(formula = ~ 1 + Trans)))
+
+Phi.table <- get.real(Pradel.pepe, "Phi", se = TRUE) %>%
+  distinct(estimate, lcl, ucl, .keep_all = TRUE) %>%
+  left_join(TransTreatdf) 
+
+f.table <- get.real(Pradel.pepe, "f", se = TRUE) %>%
+  distinct(estimate, lcl, ucl, .keep_all = TRUE) %>%
+  left_join(TransTreatdf) 
+
+ggplot(f.table, aes(Type, estimate, color = as.factor(block))) +
+  geom_point(position = position_dodge(width = .3)) +
+  geom_errorbar(aes(ymin = lcl, ymax = ucl),position = position_dodge(width = .3))+
+  theme_bw() +
+  ylab("Recruitment")+
+  xlab("Transect") +
+  guides(color = "none")+
+  scale_x_discrete(labels = c("Control","Transplant"))  
+
+## For everything (just not the tranplants)
+
+Pradel.pepe.all <- mark(pepe.proc.Prad, pepe.dd.Prad, model = "Pradrec",
+                    model.parameters = list(p = list(formula = ~ 1),
+                                            Phi = list(formula = ~ 1),
+                                            f = list(formula = ~ 1)))
+f.all <- get.real(Pradel.pepe.all, "f", se = TRUE) %>%
+  distinct(estimate, lcl, ucl, .keep_all = TRUE) %>%
+  left_join(TransTreatdf) 
+
+
+
+```
+
+
+
 
 Robust design and multistate   
 Do I need to add a dummy second measurement for 2025 that wasn't taken?   
@@ -615,27 +667,20 @@ survey2bind %>%
   group_by(surveyID, Date, survID) %>%
   summarise(n = n())
 
-
-survey2bind %>%
-  group_by(recordedBy, Date, transectID) %>%
-  summarise(n = n()) %>%
-  arrange(transectID, Date)
-  
+## Accidental repeats
   surv2023_2024 %>%
     filter(recordedBy == "MEDL_AJ")
   
   surv2023_2024 %>%
     filter(isTransplant == 1 & transectID == 34)
   
-survey2bind %>% 
-  # arrange(transectID, surveyID) %>%
-  group_by(Date, transectID, Year) %>%
-  summarise(n = n()) %>%
-  print(n = 40)
-  
+  surv2023_2024 %>%
+    filter(plantID == 1629)
+
 ## Now add number for 2023 survey 1, 2024 has surveys 2 and 3 when doubled, 2025 has survey 4
 surv_wide_robust <-
   surv2023_2024 %>%
+  filter(!(plantID == 1629 & heightInCentimeters == 0)) %>%
   mutate(transplantSeason = case_when( !(transplantSeason %in% c("Spring", "Fall")) ~ NA,
                                        TRUE ~ transplantSeason)) %>%
   mutate(transectPosition = as.numeric(transectPosition)) %>%
@@ -654,10 +699,10 @@ surv_wide_robust <-
   mutate(Obs = case_when(heightInCentimeters == 0 ~ "0",
                          (heightInCentimeters > 0 & reproductiveStatus == 0) ~ "V",
                          (heightInCentimeters > 0 & reproductiveStatus == 1) ~ "R")) %>%
-  mutate(Year = format(as.Date(Date, format="%Y-%m-%d"),"%Y")) %>%
     ## Need to have each year (primary period) have only one strata; sapply 
   group_by(plantID, Year) %>%
-    mutate(Obs = if_else(mapply(grepl,"R", Obs), gsub("V","R",Obs), Obs)) %>%
+    mutate(Obs = case_when("R" %in% Obs ~ "R",
+                           TRUE ~ Obs)) %>%
     ungroup() %>% # arrange(plantID, Date) %>% dplyr::select(plantID, Date, reproductiveStatus, Obs) %>% print(n = 100)
       ## One accidental duplicate record in the same survey, same observers
     filter(!(plantID == 1629 & surveyID == 3 & Obs == "0")) %>%
@@ -672,23 +717,10 @@ surv_wide_robust <-
   ### remove once we have 2026 data
   mutate(ch = paste0(ch, "0")) 
   
-surv_wide_robust %>% data.frame() %>% head(20)
-plants2025 %>% filter(plantID == 2057) ## Fixed by adding replace_na fro reproductiveStatus
-## surv_wide_robust up until pivot_wider: surveyID not applied appropriately
-surv_wide_robust %>%
-  group_by(plantID, transectID, isTransplant,transplantSeason, type_CT_TT, surveyID) %>%
-  add_count() %>%
-  select(Date, plantID, surveyID, recordedBy, Obs, Year, n) %>%
-  filter(n > 1) %>%
-  arrange(plantID, surveyID)
-## Up to left_join survey2bind
-surv_wide_robust %>%
-  group_by(plantID, transectID, surveyID) %>%
-  add_count() %>%
-  select(Date, plantID, surveyID, recordedBy, n) %>%
-  filter(n > 1) %>%
-  arrange(plantID, Date,surveyID)
-
+library(stringr)
+# surv_wide_robust %>% group_by(Year, plantID) %>% summarise(State = paste0(Obs, collapse = "")) %>%
+#   mutate(States = str_length(State)) %>%
+#   filter(States > 1)
 ## Any that are always dead like AsMi?? Nope, all look good, have at least one V or R
 surv_wide_robust %>%
   filter(!(grepl("R",ch) | grepl("V",ch)))
@@ -696,7 +728,7 @@ surv_wide_robust %>%
 ```
 
 
-Need to fix indeces for those that don't have double in 2024, only some have double, same for 2023  
+Need to fix indexes for those that don't have double in 2024, only some have double, same for 2023  
 ```{r}
 surv2023_2024 %>%
   group_by(transectID, date, recordedBy) %>%
@@ -822,21 +854,27 @@ p.missing3 <- pindex %>%
   filter(group %in% c(16) & session == "2024" & time == "1")
 p.missing4 <- pindex %>%
   filter(group %in% c(12,16,20,25,31,33,35,36,38,39,40) & session == "2024" & time == "2")
+### In 2025, have all zeros for the dummy last second observation
 p.missing6 <- pindex %>%
-  filter(session == "2025" & time == "2")
+  filter(session == "2025" & Time == 1)
 p.missingTransect <- pindex %>%
   filter(group %in% c(15,21))
+
+
+
 ## Fixed indices
 p.indices <- c(p.missing1$par.index,p.missing3$par.index,p.missing4$par.index,p.missingTransect$par.index, p.missing6$par.index)
 p.values <- rep(0, length(p.indices))
 
 
-## recapture probabilities
-cindex <- pepe.dd$p  ## Each session has 1 and 2, no observations session 2 of 2025. time, not Time (that is 0 and 1)
+
+
+## recapture probabilities, only the second observation in each year
+cindex <- pepe.dd$c  ## Each session has 1 and 2, no observations session 2 of 2025. time, not Time (that is 0 and 1)
 c.missing1 <- cindex %>%
-  filter(group %in% c(1,3,5,7,9,11,17,19,23,25,27,29,31,33,35,37,39) & session == "2023" & time == "1")
+  filter(group %in% c(1,3,5,7,9,11,17,19,23,25,27,29,31,33,35,37,39) & session == "2023" & time == "2")
 c.missing3 <- cindex %>%
-  filter(group %in% c(16) & session == "2024" & time == "1")
+  filter(group %in% c(16) & session == "2024" & time == "2")
 c.missing4 <- cindex %>%
   filter(group %in% c(12,16,20,25,31,33,35,36,38,39,40) & session == "2024" & time == "2")
 c.missing6 <- cindex %>%
@@ -847,12 +885,8 @@ c.missingTransect <- cindex %>%
 c.indices <- c(c.missing1$par.index,c.missing3$par.index,c.missing4$par.index,c.missingTransect$par.index, c.missing6$par.index)
 c.values <- rep(0, length(c.indices))
 
-Huggins <- mark(pepe.pr, pepe.dd, model = "CRDMSOHug",
-                time.intervals = time.intervals, begin.time = 2023)
-
-
 Huggins.pepe <- mark(pepe.pr, pepe.dd, model = "CRDMSOHug",
-                     time.intervals = time.intervals, begin.time = 2023,
+                     time.intervals = time.intervals, begin.time = 2023, groups = "Trans",
                      model.parameters = list(S = list(formula = ~ stratum),
                                              Psi = list(formula = ~ stratum:tostratum),
                                              Omega = list(formula = ~ stratum),
@@ -863,27 +897,225 @@ Huggins.pepe <- mark(pepe.pr, pepe.dd, model = "CRDMSOHug",
 
 
 
+Psi.table <- get.real(Huggins.pepe, "Psi", se = TRUE) %>%
+  distinct(estimate, lcl, ucl, .keep_all = TRUE) %>%
+  rename(Psi = estimate, 
+         sePsi = se,
+         lclPsi = lcl,
+         uclPsi = ucl)
+## Probably that a reproductive individual stays reproductive
+Omega.table <- get.real(Huggins.pepe, "Omega", se = TRUE) %>%
+  distinct(estimate, lcl, ucl, .keep_all = TRUE) %>%
+  rename(Omega = estimate, 
+         seOmega = se,
+         lclOmega = lcl,
+         uclOmega = ucl)
+Phi.table <- get.real(Huggins.pepe, "S", se = TRUE) %>%
+  distinct(estimate, lcl, ucl, .keep_all = TRUE) %>%
+  rename(Phi = estimate, 
+         sePhi = se,
+         lclPhi = lcl,
+         uclPhi = ucl)
+
+p.table <- get.real(Huggins.pepe, "p", se = TRUE) %>%
+  distinct(estimate, lcl, ucl, .keep_all = TRUE)
+c.table <- get.real(Huggins.pepe, "c", se = TRUE) %>%
+  distinct(estimate, lcl, ucl, .keep_all = TRUE)
+
+## Multistrata and Pradel
+
+## probability that the Veg survives and doesn't transition
+MPM.pepe <- matrix( c(Phi.table$Phi[Phi.table$stratum == "V"] * (1-Psi.table$Psi[Psi.table$stratum == "V"]),
+      ## probability that the Reproductive transitions to veg + recruitment (from Pradel)              
+                     (Phi.table$Phi[Phi.table$stratum == "R"] * Psi.table$Psi[Psi.table$stratum == "R"]) + f.all$estimate,
+      ## probability that veg survives and transitions
+                     (Phi.table$Phi[Phi.table$stratum == "V"] * (Psi.table$Psi[Psi.table$stratum == "V"])),
+      ## Probability that Reprodutive stays and survives
+                     (Phi.table$Phi[Phi.table$stratum == "R"] * (1-Psi.table$Psi[Psi.table$stratum == "R"]))),
+      nrow = 2,
+      byrow = TRUE)
+
+lambda(MPM.pepe)
+sensitivity(MPM.pepe)
+elasticity(MPM.pepe)
+
 ```
 
 
-## Something is wrong
+
+### Survival rate of just the transplants  
 ```{r}
 
-plants25toadd <- plants25toadd %>%
-  mutate(year = format(as.Date(date, format = "%m/%d/%Y"), "%Y")) 
-  
+## Three have NA pepe_multi[1038,], 1075, and 1387
+# pepe_multi[c(1038,1075,1387),]
+## Plants with NA at the third (1165 and 732) and second 928 survey
+
+pepe_multi.tr <- surv_wide_robust %>%
+  filter(!(plantID %in% finderrors)) %>%
+  filter(isTransplant == 1) %>%
+  mutate(Trans = as.factor(transectID),
+         Type = as.factor(type_CT_TT)) %>%
+  filter(!is.na(Trans))
+
+plotdfTr <- pepe_multi.tr %>%
+  distinct(Trans)
+
+dmPlotTr <-model.matrix(~ -1 + Trans, pepe_multi.tr)
+dimnames(dmPlotTr)[[2]][length(dimnames(dmPlotTr)[[2]])] ## The last one to add a semicolon to
+
+pepe_multi.tr %>%
+  dplyr::select(ch) %>%
+  bind_cols(dmPlotTr) %>%
+  mutate(Trans40 = paste(Trans40, ";", sep= "")) %>%
+  write.table(file = "Data/Pepe_mark_multistateTrans.inp", sep = " ", col.names = FALSE, row.names = FALSE)
+
+pepeRobustTrans <- convert.inp("Data/Pepe_mark_multistateTrans.inp",
+                       group.df = plotdfTr,
+                       covariates = NULL,
+                       use.comments = FALSE)  
+
+# 0 for secondary and 1 for last secondary !! This is the interval between occasions, should be one less than surveys, but between 4 and 5 is primary, a year!? So there is a dummy second 2025 observation that doesn't exist
+time.intervals <- c(0,1,0,1,0)
+
+pepe.pr.transplants <- process.data(pepeRobustTrans, model = "CRDMSOHug", begin.time = 2023, groups = "Trans",
+                               # strata.labels = c("R","V"),
+                        time.intervals = time.intervals)
+pepe.dd.transplants <- make.design.data(pepe.pr.transplants)
+
+pepe.dd.transplants$Psi$stratum <- factor(pepe.dd.transplants$Psi$stratum, levels = c("R","V"))
+pepe.dd.transplants$S$stratum <- factor(pepe.dd.transplants$S$stratum, levels = c("R","V"))
+pepe.dd.transplants$Omega$stratum <- factor(pepe.dd.transplants$Omega$stratum, levels = c("R","V"))
+pepe.dd.transplants$p$stratum <- factor(pepe.dd.transplants$p$stratum, levels = c("R","V"))
+pepe.dd.transplants$c$stratum <- factor(pepe.dd.transplants$c$stratum, levels = c("R","V"))
+
+table(pepe.dd.transplants$Psi[,c("stratum","tostratum")])
+
+## Need to index the plots not seen and fix them to 0. Transects 15 (starts new 2024), 16, and 21, just 16 in 2023 and 2024, remove 15 and 21
+pindex <- pepe.dd.transplants$p  ## Each session has 1 and 2, no observations session 2 of 2025. time, not Time (that is 0 and 1)
+p.missing1 <- pindex %>%
+  filter(group %in% c(1,3,5,7,9,11,17,19,23,25,27,29,31,33,35,37,39) & session == "2023" & time == "1")
+p.missing3 <- pindex %>%
+  filter(group %in% c(16) & session == "2024" & time == "1")
+p.missing4 <- pindex %>%
+  filter(group %in% c(12,16,20,25,31,33,35,36,38,39,40) & session == "2024" & time == "2")
+### In 2025, have all zeros for the dummy last second observation
+p.missing6 <- pindex %>%
+  filter(session == "2025" & Time == 1)
+p.missingTransect <- pindex %>%
+  filter(group %in% c(15,21))
+
+
+
+## Fixed indices
+p.indices <- c(p.missing1$par.index,p.missing3$par.index,p.missing4$par.index,p.missingTransect$par.index, p.missing6$par.index)
+p.values <- rep(0, length(p.indices))
+
+
+
+
+## recapture probabilities, only the second observation in each year
+cindex <- pepe.dd.transplants$c  ## Each session has 1 and 2, no observations session 2 of 2025. time, not Time (that is 0 and 1)
+c.missing1 <- cindex %>%
+  filter(group %in% c(1,3,5,7,9,11,17,19,23,25,27,29,31,33,35,37,39) & session == "2023" & time == "2")
+c.missing3 <- cindex %>%
+  filter(group %in% c(16) & session == "2024" & time == "2")
+c.missing4 <- cindex %>%
+  filter(group %in% c(12,16,20,25,31,33,35,36,38,39,40) & session == "2024" & time == "2")
+c.missing6 <- cindex %>%
+  filter(session == "2025" & time == "2")
+c.missingTransect <- cindex %>%
+  filter(group %in% c(15,21))
+## Fixed indices
+c.indices <- c(c.missing1$par.index,c.missing3$par.index,c.missing4$par.index,c.missingTransect$par.index, c.missing6$par.index)
+c.values <- rep(0, length(c.indices))
+
+Huggins.pepe.transplants <- mark(pepe.pr.transplants, pepe.dd.transplants, model = "CRDMSOHug",
+                     time.intervals = time.intervals, begin.time = 2023, groups = "Trans",
+                     model.parameters = list(S = list(formula = ~ stratum),
+                                             Psi = list(formula = ~ stratum:tostratum),
+                                             Omega = list(formula = ~ stratum),
+                                             p = list(formula = ~ stratum,
+                                                      fixed = list(index = p.indices, value = p.values)),
+                                             c = list(formula = ~ stratum, 
+                                                      fixed = list(index = c.indices, value = c.values))))
+
+
+
+Psi.table.transplants <- get.real(Huggins.pepe.transplants, "Psi", se = TRUE) %>%
+  distinct(estimate, lcl, ucl, .keep_all = TRUE) %>%
+  rename(Psi = estimate, 
+         sePsi = se,
+         lclPsi = lcl,
+         uclPsi = ucl)
+## Probably that a reproductive individual stays reproductive
+Omega.table.transplants <- get.real(Huggins.pepe.transplants, "Omega", se = TRUE) %>%
+  distinct(estimate, lcl, ucl, .keep_all = TRUE) %>%
+  rename(Omega = estimate, 
+         seOmega = se,
+         lclOmega = lcl,
+         uclOmega = ucl)
+Phi.table.transplants <- get.real(Huggins.pepe.transplants, "S", se = TRUE) %>%
+  distinct(estimate, lcl, ucl, .keep_all = TRUE) %>%
+  rename(Phi = estimate, 
+         sePhi = se,
+         lclPhi = lcl,
+         uclPhi = ucl)
+
+p.table.transplants <- get.real(Huggins.pepe.transplants, "p", se = TRUE) %>%
+  distinct(estimate, lcl, ucl, .keep_all = TRUE)
+c.table.transplants <- get.real(Huggins.pepe.transplants, "c", se = TRUE) %>%
+  distinct(estimate, lcl, ucl, .keep_all = TRUE)
+
+## Multistrata and Pradel
+
+## probability that the Veg survives and doesn't transition
+MPM.pepe.transplants <- matrix( c(Phi.table.transplants$Phi[Phi.table.transplants$stratum == "V"] * (1-Psi.table$Psi[Psi.table$stratum == "V"]),
+      ## probability that the Reproductive transitions to veg + recruitment (from Pradel)              
+                     (Phi.table.transplants$Phi[Phi.table.transplants$stratum == "R"] * Psi.table$Psi[Psi.table$stratum == "R"]) + f.all$estimate,
+      ## probability that veg survives and transitions
+                     (Phi.table.transplants$Phi[Phi.table.transplants$stratum == "V"] * (Psi.table$Psi[Psi.table$stratum == "V"])),
+      ## Probability that Reprodutive stays and survives
+                     (Phi.table.transplants$Phi[Phi.table.transplants$stratum == "R"] * (1-Psi.table$Psi[Psi.table$stratum == "R"]))),
+      nrow = 2,
+      byrow = TRUE)
+
+lambda(MPM.pepe.transplants)
+
+```
+
+
+
+
+
+```{r}
+
 
 ######################### Appendices ###############################
-surv2023_2024 %>%
-  mutate(Date = as.Date(date)) %>%
-  ## Multiple measurements per year
-  mutate(year = format(Date, "%Y")) %>%
+Appendix <- surv2023_2024 %>%
+  mutate(transplantSeason = case_when( !(transplantSeason %in% c("Spring", "Fall")) ~ NA,
+                                       TRUE ~ transplantSeason)) %>%
+  mutate(transectPosition = as.numeric(transectPosition)) %>%
   bind_rows(plants25toadd) %>%
-  filter(isTransplant == 0) %>% 
+    mutate(date = case_when(date == "6/25/2025" ~ "6/24/2025",
+                            ## To make averages for the few doubles in 2023
+                            date == "2023-05-31" ~ "2023-10-16",
+                            TRUE ~ date)) %>%
+  replace_na(list(heightInCentimeters = 0, reproductiveStatus = 0, 
+                  numberReproductiveStructures = 0, basalWidthInCentimeters = 0)) %>%
+  mutate(Date = as.Date(date)) %>%
+  mutate(Year = format(as.Date(Date, format="%Y-%m-%d"),"%Y")) %>%
   left_join(trans2024, by = c("transectID" = "transectId")) %>%
-  filter(!(transectID %in% c(15, 16, 21))) %>%
-  arrange(Date) %>%
-  group_by(year, transectID, type_CT_TT, plantID, x, y) %>%
+  ## Can ignore the 5 repeat collections of Fall transplants
+  filter(recordedBy != "MEDL_AJ") %>%
+  select(Date,Year,plantID, heightInCentimeters:numberReproductiveStructures,transectID:isTransplant, type_CT_TT:end5mTagNum) 
+
+Appendix %>%
+  filter(plantID == 2074)
+
+Appendix %>%
+  group_by(Year, transectID, type_CT_TT, plantID, x, y) %>%
+  filter(isTransplant == 0) %>%
+  ## Report on max, not the missing data
   summarise(heightInCentimeters = max(heightInCentimeters, na.rm = TRUE),
             basalWidthInCentimeters = max(basalWidthInCentimeters, na.rm = TRUE),
             reproductiveStatus = max(reproductiveStatus, na.rm = TRUE),
@@ -892,18 +1124,14 @@ surv2023_2024 %>%
   mutate(surv = case_when(heightInCentimeters > 0 ~ 1,
                           heightInCentimeters == 0 ~ 0)) %>%
   ## All have to be alive in the first year
-  filter(!(year == 2023 & surv == 0)) %>%
+  filter(!(Year == 2023 & surv == 0)) %>%
   write.csv("2023_2025_Penstemon-penlandii_existing.csv")
 
-surv2023_2024 %>%
-  filter(isTransplant == 1) %>% 
-  left_join(trans2024, by = c("transectID" = "transectId")) %>%
-  # filter(!(transectID %in% c(15, 16, 21))) %>%
-  mutate(Date = as.Date(date)) %>%
-  arrange(Date) %>%
-  ## Multiple measurements per year
-  mutate(year = format(Date, "%Y")) %>%
-  group_by(year, transectID, type_CT_TT, plantID, x, y, transplantSeason, transectPosition) %>%
+
+Appendix %>%
+  filter(isTransplant == 1) %>%
+  group_by(Year, transectID, type_CT_TT, plantID, x, y, transplantSeason, transectPosition) %>%
+  ## Report on max, not the missing data
   summarise(heightInCentimeters = max(heightInCentimeters, na.rm = TRUE),
             basalWidthInCentimeters = max(basalWidthInCentimeters, na.rm = TRUE),
             reproductiveStatus = max(reproductiveStatus, na.rm = TRUE),
@@ -912,8 +1140,8 @@ surv2023_2024 %>%
   mutate(surv = case_when(heightInCentimeters > 0 ~ 1,
                           heightInCentimeters == 0 ~ 0)) %>%
   ## All have to be alive in the first year
-  filter(!(year == 2023 & surv == 0)) %>%
-  write.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Penstemon-penlandii_Projects/Tri-State_Transplant_2023-2026//2024_Penstemon-penlandii_Annualreport/2023_2024_Penstemon-penlandii_transplants.csv")
+  filter(!(Year == 2023 & surv == 0)) %>%
+  write.csv("2023_2025_Penstemon-penlandii_transplants.csv")
 
 #############################################################################################
 
@@ -922,20 +1150,117 @@ surv2023_2024 %>%
 
 
 Percent of individuals that survived by 2025 per transect and reproductive status by transplant timing  
+Missing some of the individuals, should only use this once I can check it better. 
 ```{r}
 
-ggplot()
+## Given the starting height, not the current height
+ggsave(filename = "Figures/2024-2025_SurvXHeight.jpg",
+
+Appendix %>%
+  filter(isTransplant == 1) %>%
+  group_by(Year, transectID, type_CT_TT, plantID, x, y, transplantSeason, transectPosition) %>%
+  ## Report on max, not the missing data
+  summarise(heightInCentimeters = max(heightInCentimeters, na.rm = TRUE),
+            basalWidthInCentimeters = max(basalWidthInCentimeters, na.rm = TRUE),
+            reproductiveStatus = max(reproductiveStatus, na.rm = TRUE),
+            numberReproductiveStructures = max(numberReproductiveStructures, na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(surv = case_when(heightInCentimeters > 0 ~ 1,
+                          heightInCentimeters == 0 ~ 0)) %>%
+  ## All have to be alive in the first year
+  filter(!(Year == 2023 & surv == 0)) %>%
+  group_by(plantID) %>%
+  mutate(startHeight = heightInCentimeters[Year == 2023],
+         startWidth = basalWidthInCentimeters[Year == 2023]) %>%
+  filter(Year != 2023) %>%
+ggplot(  aes(startHeight, surv, colour = transplantSeason)) +
+  geom_point(pch = "|")+
+  stat_smooth(method="glm",  method.args = list(family = "binomial"), se=TRUE)+
+  theme_bw() +
+  xlab("Height (cm)\nat tranplant 2023")+
+  ylab("Survival") +
+  facet_wrap(~Year),
+width=220, height=100,units='mm', dpi=300)
+  
 
 
 ```
 
 
+Figure 3 - can't figure it out. removing for now
+```{r}
+Appendix %>%
+  filter(isTransplant == 1) %>%
+  group_by(Year, transectID, type_CT_TT, plantID, x, y, transplantSeason, transectPosition) %>%
+  ## Report on max, not the missing data
+  summarise(heightInCentimeters = max(heightInCentimeters, na.rm = TRUE),
+            basalWidthInCentimeters = max(basalWidthInCentimeters, na.rm = TRUE),
+            reproductiveStatus = max(reproductiveStatus, na.rm = TRUE),
+            numberReproductiveStructures = max(numberReproductiveStructures, na.rm = TRUE)) %>%
+  ungroup() %>%
+  group_by(Year, transectID, type_CT_TT,transplantSeason) %>%
+  filter(heightInCentimeters > 0 & !is.na(heightInCentimeters)) %>%
+  summarise(PercSurv = n()/5) %>%
+  filter(Year != 2023) %>%
+ggplot(  aes(transplantSeason, PercSurv, fill = Year)) +
+  geom_boxplot(position = position_dodge(width = 1)) +
+  geom_point(position = position_jitterdodge(dodge.width = 1))+
+  theme_bw() +
+  xlab("Transplant Season")+
+  ylab("Percent Survival")+
+  scale_fill_manual(values = c("tomato","grey"))
 
 
+# Year, reproductive status, and season of transplant, give the reproductive status in 2023, not the count of statuses. 
+CountStage <- Appendix %>%
+  filter(isTransplant == 1) %>%
+  group_by(Year, transectID, type_CT_TT, plantID, x, y, transplantSeason, transectPosition) %>%
+  replace_na(list(numberReproductiveStructures = 0, reproductiveStatus=0)) %>%
+  ## Report on max, not the missing data
+  summarise(heightInCentimeters = max(heightInCentimeters, na.rm = TRUE),
+            basalWidthInCentimeters = max(basalWidthInCentimeters, na.rm = TRUE),
+            reproductiveStatus = max(reproductiveStatus, na.rm = TRUE),
+            numberReproductiveStructures = max(numberReproductiveStructures, na.rm = TRUE)) %>%
+  filter(Year == 2023) %>%
+  rename(InitreproStatus = reproductiveStatus) %>%
+  select(transectID, type_CT_TT,plantID, InitreproStatus)
+  # mutate(reproductiveStatus = as.factor(reproductiveStatus)) %>%
+  # ungroup() %>%
+  # group_by(Year, transectID, transplantSeason, reproductiveStatus) %>%
+  # summarise(countStage = n()) %>%
+  # rename(InitReproStatus = reproductiveStatus)
+
+CountStage %>% filter(Year == 2023)
 
 
+# Use wide format to estimate survival of transplants given their initial size, reproductive status, and transplant season
+# before unite and then merge CountStage minus year and the pivot long again. 
 
-
+surv_wide %>% head()
+  filter(isTransplant == 1) %>%
+  left_join(CountStage[,-1]) %>%
+  group_by(Year, transectID, type_CT_TT, plantID, x, y, transplantSeason, transectPosition, InitreproStatus) %>%
+  summarise(heightInCentimeters = max(heightInCentimeters, na.rm = TRUE),
+            basalWidthInCentimeters = max(basalWidthInCentimeters, na.rm = TRUE),
+            reproductiveStatus = max(reproductiveStatus, na.rm = TRUE),
+            numberReproductiveStructures = max(numberReproductiveStructures, na.rm = TRUE)) %>%
+  replace_na(list(heightInCentimeters = 0))  %>%
+  ungroup() %>%
+  group_by(Year, transectID, type_CT_TT,transplantSeason, InitreproStatus) %>%
+  summarise(SurvPerc = case_when(n() == 0 ~ NA,
+                                 n() > 0 ~ length(heightInCentimeters > 0)/n())) %>% 
+  filter(!is.na(SurvPerc)) %>%
+  ungroup() %>% 
+  filter(Year != 2023) %>%
+ggplot(  aes(transplantSeason, SurvPerc, fill = Year)) +
+  geom_boxplot(position = position_dodge(width = 1)) +
+  geom_point(position = position_jitterdodge(dodge.width = 1))+
+  theme_bw() +
+  xlab("Transplant Season")+
+  ylab("Percent Survival")+
+  scale_fill_manual(values = c("tomato","grey")) +
+  facet_grid(Year~InitreproStatus)
+```
 
 
 
