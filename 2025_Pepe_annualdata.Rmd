@@ -1212,54 +1212,102 @@ ggplot(  aes(transplantSeason, PercSurv, fill = Year)) +
 
 
 # Year, reproductive status, and season of transplant, give the reproductive status in 2023, not the count of statuses. 
-CountStage <- Appendix %>%
+# CountStage <- 
+  surv2023_2024 %>%
+  mutate(transectPosition = as.numeric(transectPosition)) %>%
+  bind_rows(plants25toadd) %>%
   filter(isTransplant == 1) %>%
-  group_by(Year, transectID, type_CT_TT, plantID, x, y, transplantSeason, transectPosition) %>%
+  filter(((date == "2023-10-16" & transplantSeason == "Fall") | (date == "2023-05-31" & transplantSeason ==  "Spring"))) %>%
+  ## Can ignore the 5 repeat collections of Fall transplants
+  filter(recordedBy != "MEDL_AJ") %>%
+  # group_by(Year, transectID, type_CT_TT, plantID, x, y, transplantSeason, transectPosition) %>%
   replace_na(list(numberReproductiveStructures = 0, reproductiveStatus=0)) %>%
-  ## Report on max, not the missing data
-  summarise(heightInCentimeters = max(heightInCentimeters, na.rm = TRUE),
-            basalWidthInCentimeters = max(basalWidthInCentimeters, na.rm = TRUE),
-            reproductiveStatus = max(reproductiveStatus, na.rm = TRUE),
-            numberReproductiveStructures = max(numberReproductiveStructures, na.rm = TRUE)) %>%
-  filter(Year == 2023) %>%
-  rename(InitreproStatus = reproductiveStatus) %>%
-  select(transectID, type_CT_TT,plantID, InitreproStatus)
-  # mutate(reproductiveStatus = as.factor(reproductiveStatus)) %>%
-  # ungroup() %>%
-  # group_by(Year, transectID, transplantSeason, reproductiveStatus) %>%
-  # summarise(countStage = n()) %>%
-  # rename(InitReproStatus = reproductiveStatus)
-
-CountStage %>% filter(Year == 2023)
-
+  rename(InitreproStatus = reproductiveStatus,
+         Initheight = heightInCentimeters,
+         InitWidth = basalWidthInCentimeters,
+         InitNumRepro = numberReproductiveStructures) %>%
+  select(plantID, Initheight:InitNumRepro, transectID, transplantSeason, transectPosition,isTransplant)
 
 # Use wide format to estimate survival of transplants given their initial size, reproductive status, and transplant season
 # before unite and then merge CountStage minus year and the pivot long again. 
 
-surv_wide %>% head()
+ SurvXInit <-
+   surv2023_2024 %>%
+  mutate(transplantSeason = case_when( !(transplantSeason %in% c("Spring", "Fall")) ~ NA,
+                                       TRUE ~ transplantSeason)) %>%
+  mutate(transectPosition = as.numeric(transectPosition)) %>%
+  bind_rows(plants25toadd) %>%
+  filter(!(transectID %in% c(15, 21,16))) %>%
   filter(isTransplant == 1) %>%
-  left_join(CountStage[,-1]) %>%
-  group_by(Year, transectID, type_CT_TT, plantID, x, y, transplantSeason, transectPosition, InitreproStatus) %>%
-  summarise(heightInCentimeters = max(heightInCentimeters, na.rm = TRUE),
-            basalWidthInCentimeters = max(basalWidthInCentimeters, na.rm = TRUE),
-            reproductiveStatus = max(reproductiveStatus, na.rm = TRUE),
-            numberReproductiveStructures = max(numberReproductiveStructures, na.rm = TRUE)) %>%
-  replace_na(list(heightInCentimeters = 0))  %>%
-  ungroup() %>%
-  group_by(Year, transectID, type_CT_TT,transplantSeason, InitreproStatus) %>%
-  summarise(SurvPerc = case_when(n() == 0 ~ NA,
-                                 n() > 0 ~ length(heightInCentimeters > 0)/n())) %>% 
-  filter(!is.na(SurvPerc)) %>%
-  ungroup() %>% 
+  ## Can ignore the 5 repeat collections of Fall transplants
+  filter(recordedBy != "MEDL_AJ") %>%
+  mutate(Date = as.Date(date)) %>%
+  mutate(Year = format(as.Date(Date, format="%Y-%m-%d"),"%Y")) %>%
   filter(Year != 2023) %>%
-ggplot(  aes(transplantSeason, SurvPerc, fill = Year)) +
-  geom_boxplot(position = position_dodge(width = 1)) +
-  geom_point(position = position_jitterdodge(dodge.width = 1))+
+  group_by(plantID, date) %>%
+  add_count() %>%
+  mutate(heightInCentimeters = case_when(n == 2 ~ mean(heightInCentimeters),
+                                         n == 1 ~ max(heightInCentimeters)),
+         basalWidthInCentimeters = case_when(n == 2 ~ mean(basalWidthInCentimeters),
+                                         n == 1 ~ max(basalWidthInCentimeters)),
+         reproductiveStatus = case_when(n == 2 ~ max(basalWidthInCentimeters),
+                                         n == 1 ~ max(basalWidthInCentimeters)),
+         numberReproductiveStructures = case_when(n == 2 ~ mean(numberReproductiveStructures),
+                                         n == 1 ~ max(numberReproductiveStructures))) %>%
+  ungroup() %>%  
+  mutate(ch = case_when(heightInCentimeters > 0 ~ 1,
+                        heightInCentimeters == 0 ~ 0)) %>%
+   select(Year, ch, plantID, transectID, transplantSeason, isTransplant, transectPosition) %>%
+   distinct() %>%
+     pivot_wider(names_from = Year,
+                 # id_cols = c(plantID, transectID, transplantSeason, isTransplant, transectPosition),
+                 values_from = ch,
+                 values_fill = list(ch = 0)) %>%
+    # distinct() %>%
+  left_join(CountStage, by = c("plantID", "transectID","transplantSeason", "transectPosition","isTransplant")) %>%
+   pivot_longer(col = c("2024","2025"), names_to = "Year", values_to = "ch") 
+
+ggplot(SurvXInit,  aes(Initheight, ch, color = as.factor(InitreproStatus))) +
+  geom_point(pch = "|")+
+  stat_smooth(method="glm",  method.args = list(family = "binomial"), se=TRUE)+
   theme_bw() +
-  xlab("Transplant Season")+
-  ylab("Percent Survival")+
-  scale_fill_manual(values = c("tomato","grey")) +
-  facet_grid(Year~InitreproStatus)
+  xlab("Height at Transplant")+
+  ylab("Survival")+
+  scale_color_manual("Initial\nReproductive\nStatus",values = c("tomato","black"), labels = c("Vegetative","Reproductive")) +
+  facet_grid(transplantSeason~Year)
+
+SurvXInit %>%
+  group_by(transectID, Year, InitreproStatus, transplantSeason) %>%
+  summarise(PerSurv = sum(ch)/n()) %>%
+ggplot(  aes(as.factor(InitreproStatus), PerSurv, color = Year)) +
+  geom_boxplot() +
+  geom_jitter(position = position_jitterdodge(jitter.height = 0))+
+  theme_bw() +
+  xlab("Initial Stage")+
+  scale_x_discrete(labels = c("Vegetative", "Reproductive")) +
+  ylab("Percent Survival") +
+  scale_color_manual("Year",values = c("tomato","black"))
+
+ggsave(filename = "Figures/SurvivalXInitStageXSeason.jpg",
+SurvXInit %>%
+  group_by(transectID, Year, InitreproStatus, transplantSeason) %>%
+  summarise(PerSurv = sum(ch)/n()) %>%
+ggplot(  aes(as.factor(InitreproStatus), PerSurv, fill = transplantSeason)) +
+  geom_boxplot() +
+  geom_jitter(position = position_jitterdodge(jitter.height = 0))+
+  theme_bw() +
+  xlab("Initial Stage")+
+  scale_x_discrete(labels = c("Vegetative", "Reproductive")) +
+  ylab("Percent survival") +
+  facet_wrap(~ Year) +
+  scale_fill_manual("Transplant\nseason",values = c("darkgreen","burlywood1"))
+
+
+, width=200, height=100,units='mm', dpi=300)
+
+
+
+
 ```
 
 
