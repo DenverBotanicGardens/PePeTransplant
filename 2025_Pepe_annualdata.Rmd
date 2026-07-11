@@ -87,10 +87,14 @@ plants2025 <- plants2025 %>%
   mutate(transectPosition = as.numeric(transectPosition)) %>%
   replace_na(list(isTransplant = 0))
 
+
+## 2026 data
+surv2026 <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Data/2026_pepe_triState_data2upload.csv")
+
 ```
 
 
-# Check correct assigment of PlantIDs to transplants (and subsequently all of them)   
+# Check correct assignment of PlantIDs to transplants (and subsequently all of them)   
 ```{r}
 ## Five Fall transplants, one transect, was measured during tranplanting and during plot reading. 
 table(surv2023_2024$date, surv2023_2024$transplantSeason)
@@ -121,6 +125,8 @@ surv2023_2024 %>%
   dplyr::select(plantID:heightInCentimeters, x,y ,recordedBy , transectID, transplantSeason:isTransplant, n) %>%
   arrange(transectID, transectPosition) 
 
+
+# Only transplants have a tranectPoisition, the rest get NAs introduced by coercion
 surv2023_2024 %>%
   mutate(transectPosition = as.numeric(transectPosition)) %>%
   filter(date == "2023-10-16" & transectID == 34) %>%
@@ -280,6 +286,9 @@ plants25toadd %>%
   summarise(n = n()) %>%
   print(n = 47)
 
+#### Add 2026 plants
+
+
 surv_wide <- 
   surv2023_2024 %>%
   mutate(transplantSeason = case_when( !(transplantSeason %in% c("Spring", "Fall")) ~ NA,
@@ -338,7 +347,6 @@ surv_wide <- surv_wide %>%
 
 
 ```
-
 
 
 
