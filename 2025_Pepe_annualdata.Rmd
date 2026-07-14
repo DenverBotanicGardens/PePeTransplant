@@ -12,7 +12,7 @@ output: R script
       Transect 21 is lost     
       
 2025:    
-      Transect 16 was found, Remove transects 15 adn 21
+      Transect 16 was found, Remove transects 15 and 21
 
 ```{r}
 
@@ -126,7 +126,7 @@ surv2023_2024 %>%
   arrange(transectID, transectPosition) 
 
 
-# Only transplants have a tranectPoisition, the rest get NAs introduced by coercion
+# Only transplants have a transectPosition, the rest get NAs introduced by coercion
 surv2023_2024 %>%
   mutate(transectPosition = as.numeric(transectPosition)) %>%
   filter(date == "2023-10-16" & transectID == 34) %>%
@@ -225,8 +225,19 @@ plants2025 %>%
 
 Density
 ```{r}
+## For plants per meter squared
+
 plants2025 %>%
   filter(Height.in.cm > 0) %>%
+  group_by(transectID) %>%
+  summarize(density2m = n()/5) %>%
+  ungroup() %>%
+  summarize(mean = mean(density2m),
+            sd = sd(density2m),
+            se = sd(density2m)/sqrt(length(density2m)))
+
+surv2026 %>%
+  filter(height..cm. >0) %>%
   group_by(transectID) %>%
   summarize(density2m = n()/5) %>%
   ungroup() %>%
@@ -287,7 +298,63 @@ plants25toadd %>%
   print(n = 47)
 
 #### Add 2026 plants
+plants26toadd <- surv2026 %>%
+  mutate(date = "2026-06-22") %>%
+  mutate(recordedBy = "MEDLPlus") %>%
+  select(plant.ID, date, height..cm.:Comments, recordedBy, transectID, x...0.1m., y..0.5m.) %>%
+  left_join(plants25toadd[,c("plantID","transplantSeason","transectPosition",
+                             "isTransplant")], by = c("plant.ID" = "plantID"))
 
+names(plants26toadd) <- names(plants25toadd)
+
+pepe23_26 <- surv2023_2024 %>%
+  mutate(transplantSeason = case_when( !(transplantSeason %in% c("Spring", "Fall")) ~ NA,
+                                       TRUE ~ transplantSeason)) %>%
+  mutate(transectPosition = as.numeric(transectPosition)) %>%
+  bind_rows(plants25toadd) %>%
+  bind_rows(plants26toadd) %>%
+    mutate(date = case_when(date == "6/25/2025" ~ "6/24/2025",
+                            ## To make averages for the few doubles in 2023
+                            date == "2023-05-31" ~ "2023-10-16",
+                            TRUE ~ date)) %>%
+  mutate(Date = as.Date(date)) %>%
+  filter(!(transectID %in% c(15, 21,16))) %>%
+  ## Can ignore the 5 repeat collections of Fall transplants
+  filter(recordedBy != "MEDL_AJ") %>%
+  # filter(!(transectID %in% c(15,16, 21))) %>%
+  select(Date,plantID:numberReproductiveStructures,transectID:isTransplant) %>%
+  arrange(Date)
+
+### ????
+pepe23_26 %>%
+  filter(!is.na(transplantSeason)) %>%
+  group_by(transplantSeason, date, transectID) %>%
+  mutate(perc_surv = n()/5) %>%
+  ggplot(  aes(Date, perc_surv, color = as.factor(transectID))) +
+    geom_point() +
+    # stat_smooth(method = "glm")
+    geom_line()
+
+pepe23_26 %>%
+  left_join(trans2024[,2:4], by = c("transectID" = "transectId")) %>%
+  mutate(Year = format(as.Date(Date, format="%d/%m/%Y"),"%Y")) %>%
+  filter(heightInCentimeters > 0) %>%
+  group_by(transectID, Year, type_CT_TT) %>%
+  summarize(density2m = n()/5) %>%
+  ungroup() %>%
+  group_by(Year, type_CT_TT) %>%
+  summarize(mean = mean(density2m, na.rm = TRUE),
+            sd = sd(density2m, na.rm = TRUE),
+            se = sd(density2m)/sqrt(length(density2m))) %>%
+  filter(!is.na(type_CT_TT)) %>%
+  ggplot( aes(Year, mean, color = type_CT_TT)) +
+    geom_point(position = position_dodge(0.5)) +
+    geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=0.5,
+                 position=position_dodge(0.5)) +
+    theme_bw() +
+    scale_color_manual("Type", values = c("#8B475D","darkslategray4"))
+  
+  
 
 surv_wide <- 
   surv2023_2024 %>%
@@ -295,6 +362,7 @@ surv_wide <-
                                        TRUE ~ transplantSeason)) %>%
   mutate(transectPosition = as.numeric(transectPosition)) %>%
   bind_rows(plants25toadd) %>%
+  bind_rows(plants26toadd) %>%
     mutate(date = case_when(date == "6/25/2025" ~ "6/24/2025",
                             ## To make averages for the few doubles in 2023
                             date == "2023-05-31" ~ "2023-10-16",
@@ -322,10 +390,7 @@ surv_wide <-
                         heightInCentimeters == 0 ~ 0)) %>%
   pivot_wider(names_from = date,
               id_cols = c(plantID, transectID, transplantSeason, isTransplant),
-              values_from = ch,
-              # values_from = Obs,
-              # values_fill = "0"
-              ) %>%
+              values_from = ch) %>%
   arrange(transectID,transplantSeason) %>%
   distinct()
 
@@ -334,8 +399,9 @@ surv_wide <-
 surv_wide <- surv_wide %>%
   replace_na(list(`2023-10-16` = 0,
                   `2024-06-24` = 0,
-                  `2025-06-24` = 0)) %>%
-  unite(ch, `2023-10-16`:`2025-06-24`, sep = "")
+                  `2025-06-24` = 0,
+                  `2026-06-22` = 0)) %>%
+  unite(ch, `2023-10-16`:`2026-06-22`, sep = "")
 
 
 ## Remove the four without alive ever
@@ -641,6 +707,7 @@ f.all <- get.real(Pradel.pepe.all, "f", se = TRUE) %>%
 Robust design and multistate   
 Do I need to add a dummy second measurement for 2025 that wasn't taken?   
 Can only have one strata per primary period
+?? what to do with 2026?
 ```{r}
 
 
@@ -736,7 +803,8 @@ surv_wide_robust %>%
 ```
 
 
-Need to fix indexes for those that don't have double in 2024, only some have double, same for 2023  
+Need to fix indexes for those that don't have double in 2024, only some have double, same for 2023
+No double in 2026
 ```{r}
 surv2023_2024 %>%
   group_by(transectID, date, recordedBy) %>%
