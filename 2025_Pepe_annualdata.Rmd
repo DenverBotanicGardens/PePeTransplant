@@ -96,7 +96,7 @@ surv2026 <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - Ge
 
 # Check correct assignment of PlantIDs to transplants (and subsequently all of them)   
 ```{r}
-## Five Fall transplants, one transect, was measured during tranplanting and during plot reading. 
+## Five Fall transplants, one transect, was measured during transplanting and during plot reading. 
 table(surv2023_2024$date, surv2023_2024$transplantSeason)
 
 ### Change all dates to one in spring, one in fall and one in 2024 
@@ -226,6 +226,9 @@ plants2025 %>%
 Density
 ```{r}
 ## For plants per meter squared
+surv2023_2024 %>%
+  filter(heightInCentimeters > 0) %>%
+  group_by(transectID, )
 
 plants2025 %>%
   filter(Height.in.cm > 0) %>%
@@ -323,9 +326,10 @@ pepe23_26 <- surv2023_2024 %>%
   filter(recordedBy != "MEDL_AJ") %>%
   # filter(!(transectID %in% c(15,16, 21))) %>%
   select(Date,plantID:numberReproductiveStructures,transectID:isTransplant) %>%
-  arrange(Date)
+  arrange(Date) %>%
+  left_join(trans2024[,2:4], by = c("transectID" = "transectId")) %>%
+  mutate(Year = format(as.Date(Date, format="%d/%m/%Y"),"%Y")) 
 
-### ????
 pepe23_26 %>%
   filter(!is.na(transplantSeason)) %>%
   group_by(transplantSeason, date, transectID) %>%
@@ -335,9 +339,24 @@ pepe23_26 %>%
     # stat_smooth(method = "glm")
     geom_line()
 
+# pepe23_26 %>%
+#   filter(is.na(transectID))
+# pepe23_26 <- pepe23_26 %>%
+#   mutate(block = case_when(plantID == 139 ~ 5 )) %>%
+#   mutate(type_CT_TT = case_when(plantID == 139 ~ "TT")) %>%
+#   mutate(transectID = case_when(plantID == 139 ~ 10))
+# pepe23_26 %>%
+#   filter(plantID == 139)
+
 pepe23_26 %>%
-  left_join(trans2024[,2:4], by = c("transectID" = "transectId")) %>%
-  mutate(Year = format(as.Date(Date, format="%d/%m/%Y"),"%Y")) %>%
+  filter(isTransplant != 1 | is.na(isTransplant)) %>%
+  group_by(transectID, block, Year, type_CT_TT) %>%
+  summarise(n = n()) %>%
+  ggplot(  aes(Year, n, colour = type_CT_TT)) +
+    geom_point(position = position_dodge(0.5)) +
+    geom_boxplot()
+
+pepe23_26 %>%
   filter(heightInCentimeters > 0) %>%
   group_by(transectID, Year, type_CT_TT) %>%
   summarize(density2m = n()/5) %>%
@@ -804,7 +823,7 @@ surv_wide_robust %>%
 
 
 Need to fix indexes for those that don't have double in 2024, only some have double, same for 2023
-No double in 2026
+No double in 2026 - but could just have a single?
 ```{r}
 surv2023_2024 %>%
   group_by(transectID, date, recordedBy) %>%
@@ -813,6 +832,11 @@ surv2023_2024 %>%
   # summarise(surveys = n()) %>%
   # filter(surveys == 4) %>%
   print(n = 150)
+
+
+pepe23_26 %>%
+  group_by(transectID,)
+  ggplot()
 ```
 
 Transect    surveys
@@ -1521,7 +1545,25 @@ ggplot(   aes(type_CT_TT, survRate)) +
 
 , width=120, height=100,units='mm', dpi=300)  
 
-
+## 2023 to 2026?
+### COME BACK HERE!
+pepe23_26 %>%
+  pivot_wider(id_cols = c(transect, type_CT_TT, plantID), names_from = year, names_prefix = "Year",
+              values_from = surv) %>%
+  group_by(transec, type_CT_TT) %>%
+  # filter(is.na(Year2023))
+  ## No zeros in 2023, new in 2024  
+  summarise(survRate = sum(Year2024[Year2023 == 1], na.rm = TRUE)/sum(Year2023, na.rm = TRUE),
+            recruit = length(is.na(Year2023))) %>%
+  ## I think we didn't get the data on the existing plants in 2023 for treatment plots 2, 4, 6, or 8
+  filter(!is.infinite(survRate)) %>%
+ggplot(   aes(type_CT_TT, survRate)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(height = 0, pch = 16)+
+  theme_bw() +
+  scale_x_discrete(labels = c("CT" = "Control", "TT" = "Transplant")) +
+  xlab("Transect") +
+  ylab("Percent survival") 
 
 existGLM <- exist2023_2024 %>%
   pivot_wider(id_cols = c(transectID, type_CT_TT, plantID), names_from = year, names_prefix = "Year",
@@ -1576,10 +1618,6 @@ surv2023_2024 %>%
 ## Looks like only a couple existing, all dead
 surv2023_2024 %>%
   filter(transectID == 32)
-```
-
-# Add 2025 
-```{r}
 ```
 
 
