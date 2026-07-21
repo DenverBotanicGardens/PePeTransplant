@@ -55,13 +55,11 @@ plants2024 <- read.csv("Data/20240712_dbExport/20240712__pepe_triState_plants.cs
 data2024 <- read.csv("Data/20240712_dbExport/20240712_pepe_triState_data.csv")
 
 surv2023_2024 <- data2024 %>%
-  left_join(plants2024, by = "plantID")
+  left_join(plants2024, by = "plantID") %>%
+  filter(recordedBy != "Michelle DePrenger-Levin, Adriana Jacobi") 
 
-## make a different recorder recordedBy per date in 2023
 surv2023_2024 <- surv2023_2024 %>%
-  mutate(recordedBy = case_when(date == "2023-05-31" ~ "MEDL_Spring",
-                                date == "2023-10-16" ~ "MEDL_Fall",
-                                TRUE ~ recordedBy))
+  filter(id.x != 3770)
 
 ### Add 2025
 load("Data/2025_NewPlants.Rdata")
@@ -101,13 +99,76 @@ surv2026 <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - Ge
 ## Five Fall transplants, one transect, was measured during transplanting and during plot reading. 
 table(surv2023_2024$date, surv2023_2024$transplantSeason)
 
+
+
 ### Change all dates to one in spring, one in fall and one in 2024 
 surv2023_2024 <- surv2023_2024 %>%
   mutate(date = case_when(date == "2023-10-17" ~ "2023-10-16",
                           date == "2024-06-25" ~ "2024-06-24",
                           TRUE ~ date))
-## Now looks good, Except are there duplicate fall records? and some additional records for both fall and spring in 2024??
-table(surv2023_2024$date, surv2023_2024$transplantSeason)
+
+## an extra 735, 737, 759, 760, and 762; These are the 5 extras in fall 2023
+# surv2023_2024 %>%
+#   filter(date == "2023-10-16" & transplantSeason == "Fall") %>%
+#   group_by(plantID, transectID, transplantSeason, transectPosition) %>%
+#   summarise(n = n()) %>%
+#   filter(n > 1)
+
+## Rid of 5 extra in 2023
+# surv2023_2024 %>%
+#   # filter(recordedBy != "Michelle DePrenger-Levin, Adriana Jacobi") %>%  ## These are the 5 duplicates
+#   filter(date == "2023-10-16" & transplantSeason == "Fall") %>%
+#   group_by(plantID, transectID, transplantSeason, transectPosition) %>%
+#   summarise(n = n()) %>%
+#   filter(n > 1)
+
+## One duplicate from Arich and Leah, plantID 1629
+# surv2023_2024 %>%
+#   filter(date == "2024-06-24" & !is.null(transplantSeason)) %>%
+#   group_by(plantID, transectID, transplantSeason, transectPosition, recordedBy) %>%
+#   summarise(n = n()) %>%
+#   filter(n > 1)
+# surv2023_2024 %>%
+#   filter(plantID == 1629)
+# surv2023_2024 %>%
+#   filter(id.x == 3770)
+
+## 10 extra records in spring and fall, that's 40 if both have duplicate records, additionally 5 to 10 but that's 50, not 55!!
+## There were not duplicate observations in 2024
+surv2023_2024 %>%
+  filter(date == "2024-06-24" & transplantSeason != "NULL") %>%
+  group_by(plantID, transectID, transplantSeason, transectPosition) %>%
+  summarise(n = n()) %>%
+  filter(n > 1) %>%
+  group_by(transplantSeason) %>%
+  summarise(n = n())
+
+surv2023_2024 %>%
+  group_by(date, transplantSeason) %>%
+  # filter(!duplicated(plantID)) %>%
+  filter(transplantSeason != "NULL") %>%
+  group_by(date, transplantSeason, plantID) %>%
+  summarise(n = n()) %>%
+  filter(n > 1) %>%
+  group_by(date, transplantSeason) %>%
+  summarise(n = n())
+
+surv2023_2024 %>%
+  filter(plantID == 144)
+
+foo <- surv2023_2024 %>%
+  group_by(date, transplantSeason, plantID, recordedBy) %>%
+  filter(!duplicated(plantID))
+
+table(foo$date, foo$transplantSeason)
+foo %>%
+  group_by(date, transplantSeason, plantID) %>%
+  summarise(n = n()) %>%
+  filter(n > 1)
+foo %>%
+  filter(plantID == 737) %>%
+  arrange(date) %>%
+  select(plantID:heightInCentimeters, reproductiveStatus, recordedBy, transplantSeason)
 
 ## I did double observations in 2024. For now keep one, didn't get double in 2024, or do first and second measurement
 surv2023_2024 <- surv2023_2024 %>%
