@@ -49,16 +49,19 @@ trans2024 <- read.csv("Data/20240711_dbExport/20240711__pepe_triState_transects.
 plants2024 <- read.csv("Data/20240712_dbExport/20240712__pepe_triState_plants.csv", header = TRUE)
 
 ## Need to check datasheets, then remove plantID 139
-plants2024 <- plants2024 %>%
-  filter(plantID != 139)
+# plants2024 <- plants2024 %>%
+#   filter(plantID != 139)
 
 data2024 <- read.csv("Data/20240712_dbExport/20240712_pepe_triState_data.csv")
 
 surv2023_2024 <- data2024 %>%
   left_join(plants2024, by = "plantID")
 
-
-head(surv2023_2024)
+## make a different recorder recordedBy per date in 2023
+surv2023_2024 <- surv2023_2024 %>%
+  mutate(recordedBy = case_when(date == "2023-05-31" ~ "MEDL_Spring",
+                                date == "2023-10-16" ~ "MEDL_Fall",
+                                TRUE ~ recordedBy))
 
 ### Add 2025
 load("Data/2025_NewPlants.Rdata")
@@ -72,7 +75,6 @@ plants2025 <- plants2025 %>%
 
 ## Merge with transplant and transplant season from plants2024
 plants2025 <- plants2025 %>%
-  # dplyr::select(c(plantID, date, transectID, x, y, Height.in.cm:recordedBy, transplantSeason, transectPosition, isTransplant)) %>%
   mutate(transectID =as.integer(transectID)) %>%
   replace_na(list(reproductiveStatus = 0, numberReproductiveStructures = 0))
 
@@ -115,14 +117,19 @@ surv2023_2024 <- surv2023_2024 %>%
                                 recordedBy == "Geena Poulter, Michelle DePrenger-Levin" ~ "GP_MEDL",
                                 recordedBy == "Michelle DePrenger-Levin" ~ "MEDL",
                                 recordedBy == "Michelle DePrenger-Levin, Adriana Jacobi" ~ "MEDL_AJ",
-                                recordedBy == "Michael Guidi, Brooke Washburn, Syed Jalalzai" ~ "MG_BW_SJ"
+                                recordedBy == "Michael Guidi, Brooke Washburn, Syed Jalalzai" ~ "MG_BW_SJ",
+                                TRUE ~ recordedBy
                                 ))
+
+surv2023_2024 %>%
+  filter(plantID == 139)
 
 surv2023_2024 %>%
   filter(transplantSeason == "Fall") %>%
   group_by(date, transectID, recordedBy) %>%
   add_count() %>%
-  dplyr::select(plantID:heightInCentimeters, x,y ,recordedBy , transectID, transplantSeason:isTransplant, n) %>%
+  dplyr::select(plantID:heightInCentimeters, x,y ,recordedBy , transectID,
+                transplantSeason:isTransplant, n) %>%
   arrange(transectID, transectPosition) 
 
 
@@ -137,12 +144,14 @@ surv2023_2024 %>%
   dplyr::select(plantID:heightInCentimeters, transectID:n)
 
 
-## Two plants measured twice
+## Two plants measured twice in may, more plants measured twice
 surv2023_2024 %>%
-  filter(date == "2023-05-31") %>%
-  group_by(transectID, recordedBy, isTransplant, plantID) %>%
+  group_by(date,transectID, recordedBy, isTransplant, plantID) %>%
   add_count() %>%
-  filter(n > 1)
+  select(id.x:heightInCentimeters, n) %>%
+  filter(n > 1) %>%
+  arrange(plantID) %>%
+  print(n = 35)
 
 surv2023_2024 <- surv2023_2024 %>%
   filter(!(id.x %in% c(187,189)))
@@ -167,10 +176,6 @@ plants2025 %>%
   group_by(transectID) %>%
   summarise(n = n()) %>%
   print(n = 40)
-
-# ## Remove Transect 16
-# surv2023_2024 <- surv2023_2024 %>%
-#   filter(transectID != 16)
 
 ## Need to add a 1st and 2nd observation for 2024. Second for only some plots in 2023, some weren't measured (I think < transect 10??)
 ## Yes, transects 1-9 we only measured plants that were the transplants in the spring. 
@@ -226,24 +231,21 @@ plants2025 %>%
 Density
 ```{r}
 ## For plants per meter squared
-surv2023_2024 %>%
-  filter(heightInCentimeters > 0) %>%
-  group_by(transectID, )
-
 plants2025 %>%
   filter(Height.in.cm > 0) %>%
-  group_by(transectID) %>%
+  group_by(transectID, type_CT_TT) %>%
   summarize(density2m = n()/5) %>%
-  ungroup() %>%
+  group_by(type_CT_TT) %>%
   summarize(mean = mean(density2m),
             sd = sd(density2m),
             se = sd(density2m)/sqrt(length(density2m)))
 
 surv2026 %>%
   filter(height..cm. >0) %>%
-  group_by(transectID) %>%
+  left_join(trans2024[,-1], by = c("transectID" = "transectId")) %>%
+  group_by(transectID, type_CT_TT) %>%
   summarize(density2m = n()/5) %>%
-  ungroup() %>%
+  group_by(type_CT_TT) %>%
   summarize(mean = mean(density2m),
             sd = sd(density2m),
             se = sd(density2m)/sqrt(length(density2m)))
@@ -325,28 +327,64 @@ pepe23_26 <- surv2023_2024 %>%
   ## Can ignore the 5 repeat collections of Fall transplants
   filter(recordedBy != "MEDL_AJ") %>%
   # filter(!(transectID %in% c(15,16, 21))) %>%
-  select(Date,plantID:numberReproductiveStructures,transectID:isTransplant) %>%
+  select(Date,plantID:numberReproductiveStructures,recordedBy, transectID:isTransplant) %>%
   arrange(Date) %>%
-  left_join(trans2024[,2:4], by = c("transectID" = "transectId")) %>%
-  mutate(Year = format(as.Date(Date, format="%d/%m/%Y"),"%Y")) 
+  left_join(trans2024[,2:4], by = c("transectID" = "transectId")) %>% 
+  mutate(Year = format(as.Date(Date, format="%d/%m/%Y"),"%Y")) %>%
+  mutate(block = case_when(plantID == 139 ~ 5,
+                           TRUE ~ block)) %>%
+  mutate(type_CT_TT = case_when(plantID == 139 ~ "TT",
+                                TRUE ~ type_CT_TT)) %>%
+  mutate(transectID = case_when(plantID == 139 ~ 10,
+                                TRUE ~ transectID))
+
+
+
+## Need to groupby plant id and change to "firstObs" and "secondObs"
+pepe23_26 %>%
+  filter(!is.na(transplantSeason)) %>%
+  group_by(Year, transplantSeason, recordedBy) %>%
+  summarise(n = n())
+
+pepe23_26 <- pepe23_26 %>%
+  group_by(plantID, Year) %>%
+  mutate(recordedBy = paste0("Obs", row_number())) 
+  
+
+### have double observations in here. 
+## MEDL_Fall goes to 160 percent survival, no!
+pepe23_26 %>%
+  filter(!is.na(transplantSeason)) %>%
+  filter(recordedBy != "MEDL_Fall") %>%
+  filter(heightInCentimeters > 0) %>%
+  group_by(transplantSeason, Year, transectID, block, type_CT_TT, recordedBy) %>%
+  summarise(perc_surv = n()/5) %>%
+  ggplot(  aes(Year, perc_surv, fill = as.factor(transplantSeason))) +
+    geom_point() +
+    geom_boxplot() 
+
+## not quite right to average over all observers, should average out or take the max
+pepe23_26 %>%
+  filter(!is.na(transplantSeason)) %>%
+  filter(recordedBy != "MEDL_Fall") %>%
+  filter(heightInCentimeters > 0) %>%
+  group_by(transplantSeason, Year, transectID, block, type_CT_TT, recordedBy) %>%
+  summarise(perc_surv = n()/5) %>%
+  group_by(Year) %>%
+  summarise(mean = mean(perc_surv),
+            SD = sd(perc_surv))
 
 pepe23_26 %>%
   filter(!is.na(transplantSeason)) %>%
-  group_by(transplantSeason, date, transectID) %>%
-  mutate(perc_surv = n()/5) %>%
-  ggplot(  aes(Date, perc_surv, color = as.factor(transectID))) +
-    geom_point() +
-    # stat_smooth(method = "glm")
-    geom_line()
+  filter(recordedBy != "MEDL_Fall") %>%
+  group_by(transplantSeason, Year, transectID, block, type_CT_TT, recordedBy) %>%
+  summarise(alive = case_when(any(heightInCentimeters > 0) ~ 1,
+                              all(is.na(heightInCentimeters)) ~ 0)) %>%
+  summarise(perc_surv = n()/5) %>%
+  group_by(Year, transplantSeason) %>%
+  summarise(mean = mean(perc_surv),
+            SD = sd(perc_surv))
 
-# pepe23_26 %>%
-#   filter(is.na(transectID))
-# pepe23_26 <- pepe23_26 %>%
-#   mutate(block = case_when(plantID == 139 ~ 5 )) %>%
-#   mutate(type_CT_TT = case_when(plantID == 139 ~ "TT")) %>%
-#   mutate(transectID = case_when(plantID == 139 ~ 10))
-# pepe23_26 %>%
-#   filter(plantID == 139)
 
 pepe23_26 %>%
   filter(isTransplant != 1 | is.na(isTransplant)) %>%
@@ -371,9 +409,18 @@ pepe23_26 %>%
     geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=0.5,
                  position=position_dodge(0.5)) +
     theme_bw() +
-    scale_color_manual("Type", values = c("#8B475D","darkslategray4"))
+    scale_color_manual("Type", values = c("#8B475D","darkslategray4")) +
+    xlab("Density")
   
-  
+pepe23_26 %>%
+  filter(heightInCentimeters > 0) %>%
+  group_by(transectID, Year, type_CT_TT) %>%
+  summarize(density2m = n()/5) %>%
+  ungroup() %>%
+  group_by(Year, type_CT_TT) %>%
+  summarize(mean = mean(density2m, na.rm = TRUE),
+            sd = sd(density2m, na.rm = TRUE),
+            se = sd(density2m)/sqrt(length(density2m)))
 
 surv_wide <- 
   surv2023_2024 %>%
@@ -488,9 +535,12 @@ Phi.table <- get.real(CJS.pepe, "Phi", se = TRUE) %>%
   left_join(TransTreatdf) 
 
 ## Difference in survival between Control and Transplant, color is by block
-ggsave(filename = "Figures/SurvivalCJS_block.jpg",
+ggsave(filename = "Figures/SurvivalCJS_block_2026.jpg",
 
-ggplot(Phi.table, aes(Type, estimate, color = as.factor(block), group =  as.factor(block))) +
+       
+Phi.table %>%
+  filter(!(Trans %in% c(15,16,21))) %>%
+ggplot(    aes(Type, estimate, color = as.factor(block), group =  as.factor(block))) +
   geom_point(position = position_dodge(width = .75)) +
   geom_errorbar(aes(ymin = lcl, ymax = ucl),position = position_dodge(width = .75))+
   geom_line(linetype = "dashed", position = position_dodge(width = .75))+
@@ -567,7 +617,7 @@ CJS.pepe <- mark(pepe.pr, pepe.dd, model = "CJS",
 Phi.table <- get.real(CJS.pepe, "Phi", se = TRUE) %>%
   distinct(estimate, lcl, ucl, .keep_all = TRUE) 
 ## Difference in survival between Control and Transplant, color is by block
-ggsave(filename = "Figures/SurvivalCJS_TransplantInSitu.jpg",
+ggsave(filename = "Figures/SurvivalCJS_TransplantInSitu_2026.jpg",
 
 ggplot(Phi.table, aes(Transplant, estimate)) +
   geom_point() +
