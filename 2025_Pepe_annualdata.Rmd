@@ -33,8 +33,6 @@ require(AICcmodavg)
 
 library(myClim)
 
-setwd("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii")
-
 ```
 
 
@@ -42,6 +40,8 @@ Import data
 
 Move to GitHub once checked and correct  
 ```{r}
+
+setwd("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii")
 
 trans2024 <- read.csv("Data/20240711_dbExport/20240711__pepe_triState_transects.csv", header = TRUE)
 
@@ -59,7 +59,9 @@ surv2023_2024 <- data2024 %>%
   filter(recordedBy != "Michelle DePrenger-Levin, Adriana Jacobi") 
 
 surv2023_2024 <- surv2023_2024 %>%
-  filter(id.x != 3770)
+  filter(id.x != 3770) %>%
+  group_by(date) %>%
+  filter(!duplicated(plantID))
 
 ### Add 2025
 load("Data/2025_NewPlants.Rdata")
@@ -96,16 +98,21 @@ surv2026 <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - Ge
 
 # Check correct assignment of PlantIDs to transplants (and subsequently all of them)   
 ```{r}
-## Five Fall transplants, one transect, was measured during transplanting and during plot reading. 
-table(surv2023_2024$date, surv2023_2024$transplantSeason)
-
-
 
 ### Change all dates to one in spring, one in fall and one in 2024 
 surv2023_2024 <- surv2023_2024 %>%
   mutate(date = case_when(date == "2023-10-17" ~ "2023-10-16",
                           date == "2024-06-25" ~ "2024-06-24",
                           TRUE ~ date))
+
+## Five Fall transplants, one transect, was measured during transplanting and during plot reading. 
+## Got rid of the double observations for 5 plots, 2, 4, 6, 8, and 10 above with 
+## 
+  # "group_by(date) %>%
+  # filter(!duplicated(plantID))"
+table(surv2023_2024$date, surv2023_2024$transplantSeason)
+
+
 
 ## an extra 735, 737, 759, 760, and 762; These are the 5 extras in fall 2023
 # surv2023_2024 %>%
@@ -134,14 +141,43 @@ surv2023_2024 <- surv2023_2024 %>%
 #   filter(id.x == 3770)
 
 ## 10 extra records in spring and fall, that's 40 if both have duplicate records, additionally 5 to 10 but that's 50, not 55!!
-## There were not duplicate observations in 2024
+## Looks like 2, 4, 6, 8, and 10 got double observers and then we stopped doing doubles
 surv2023_2024 %>%
-  filter(date == "2024-06-24" & transplantSeason != "NULL") %>%
+  group_by(date, plantID) %>%
+  mutate(recordedBy = paste0("Obs", row_number())) %>%
+  filter(date == "2024-06-24" & transplantSeason %in% c("Spring","Fall")) %>%
   group_by(plantID, transectID, transplantSeason, transectPosition) %>%
   summarise(n = n()) %>%
   filter(n > 1) %>%
-  group_by(transplantSeason) %>%
-  summarise(n = n())
+  print(n = 48)
+
+## Five transects got double observations in 2024. That means 25 fall and 25 spring were double counted. 
+surv2023_2024  %>%
+  group_by(date, plantID) %>%
+  mutate(recordedBy = paste0("Obs", row_number())) %>%
+  filter(plantID %in% c(10:14,16:19,31:40,81:85,87:90,110:118,145,148:151,167:170,1752)) %>%
+  select(plantID, date, heightInCentimeters, recordedBy, transplantSeason, transectPosition, transectID) %>%
+  arrange(plantID, date, transectID, transectPosition) %>%
+  group_by(date, transectPosition, transectID) %>%
+  summarise(n = n()) %>%
+  filter(n > 1) %>%
+  print(n = 47)
+  
+
+## Some double observations in 2024?
+# Yes but none are transplants
+surv2023_2024 %>% 
+  group_by(plantID, recordedBy, date) %>%
+  summarise(n = n()) %>%
+  filter(n >1) %>%
+  left_join(surv2023_2024)%>%
+  select(plantID, date, transectID, x, y, isTransplant) %>%
+  print(n = 26) 
+
+surv2023_2024 %>%
+  filter(plantID %in% c(144,152,258,262,264,272,274,283,287,310,315,320,334)) %>%
+  arrange(plantID, date)
+
 
 surv2023_2024 %>%
   group_by(date, transplantSeason) %>%
