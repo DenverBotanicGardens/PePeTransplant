@@ -2471,3 +2471,137 @@ tms.fs <- mc_read_files(paths = "C:/Users/deprengm/Denver Botanic Gardens/Conser
 
 ```
 
+
+
+PRISM   
+```{r, eval = FALSE}
+
+pepeLL <- data.frame("coords.x1" = -106.26665, "coords.x2" = 40.1027)
+
+m.ppt <- lapply(prism_archive_subset("ppt", "monthly", years = 1986:currentyr, resolution = "4km"), function(x){
+  x_rast <- pd_to_file(x)
+  rastertemps <- raster(x_rast)
+  data.frame(data = raster::extract(rastertemps, pepeLL[,c("coords.x1","coords.x2")]),
+             date = x)
+})
+
+m.tmax <- lapply(prism_archive_subset("tmax","monthly",years = 1986:currentyr, resolution = "4km"), function(x){
+  x_rast <- pd_to_file(x)
+  rastertemps <- raster(x_rast)
+  data.frame(data = raster::extract(rastertemps, pepeLL[,c("coords.x1","coords.x2")]),
+             date = x)
+})
+m.tmin <- lapply(prism_archive_subset("tmin","monthly",years = 1986:currentyr, resolution = "4km"), function(x){
+  x_rast <- pd_to_file(x)
+  rastertemps <- raster(x_rast)
+  data.frame(data = raster::extract(rastertemps, pepeLL[,c("coords.x1","coords.x2")]),
+             date = x)
+})
+
+mins.avg <- do.call(rbind, m.tmin)
+maxs.avg <- do.call(rbind, m.tmax)
+ppt.avg <- do.call(rbind, m.ppt)
+
+pepe.climate <- rbind(do.call(rbind, m.tmin), 
+                    do.call(rbind, m.tmax),
+                    do.call(rbind, m.ppt))
+
+pepe.climate.monthly <- pepe.climate %>%
+  mutate(Year = as.numeric(substr(date,  (nchar(date)+1)-6,nchar(date)-2)),
+         Month = as.numeric(substr(date, (nchar(date)+1)-2, nchar(date))),
+         # Make previous 12 months match year (previous to May survey)
+         Prev12 = ifelse(Month > 6, Year+1, Year)) %>%
+  #extract the climate variable name from the prism long name
+  separate(date, sep = "_", into = c(NA,"Variable",NA,NA,NA)) %>%
+  mutate(season = case_when(Month %in% c(11,12,1,2) ~ "winter",
+                            Month>2 & Month<7 ~ "springSummer",
+                            Month>6 & Month<11 ~ "fall"))
+
+
+pepe.c <- pepe.climate.monthly %>%
+  pivot_wider(names_from = Variable, values_from = data)
+
+## Sum monthly ppt across the previous 12 months
+pepe.climate.season.ppt <- pepe.climate.monthly %>%
+  filter(Variable == "ppt") %>%
+  group_by(Variable, season, Prev12) %>%
+  dplyr::summarise(Value = sum(data), .groups = "keep") 
+  
+## Average the min and max temperatures by season and previous 12 months
+pepe.climate.season.temp <- pepe.climate.monthly %>%
+  filter(Variable != "ppt") %>%
+  group_by(Variable, season, Prev12) %>%
+  dplyr::summarise(Value = mean(data), .groups = "keep")
+  
+pepe.season <- bind_rows(list(pepe.climate.season.ppt, pepe.climate.season.temp))
+pepe.season.wide <- pepe.season %>%
+  pivot_wider(names_from = c(Variable,season), values_from = Value)
+
+## Sum over seasons of the previous 12 months for PPT
+pepe.annual.ppt <- pepe.climate.monthly %>%
+  filter(Variable == "ppt") %>%
+  group_by(Variable, Prev12) %>%
+  dplyr::summarise(Value = sum(data), .groups = "keep")
+  
+## Average over seasons for the previous 12 months
+pepe.annual.temp <- pepe.climate.monthly %>%
+  filter(Variable != "ppt") %>%
+  group_by(Variable, Prev12) %>%
+  dplyr::summarise(Value = mean(data), .groups = "keep")
+
+pepe.annual <- do.call(rbind, list(as.data.frame(pepe.annual.ppt),
+                                   as.data.frame(pepe.annual.temp)))
+
+```
+
+```{r}
+
+
+pepe.climate.monthly %>%
+  group_by(Variable) %>%
+  mutate(scaledData = scale(data)) %>%
+  ggplot( aes(Prev12, scaledData, color = Variable)) +
+    geom_point() +
+    stat_smooth() +
+    facet_grid(Variable ~ season, scales = "free_y")
+
+pepe.season.wide %>%
+  # filter(Prev12 < 2026) %>%
+  ungroup() %>% ## but it's not grouped, maybe was taking as each row is a group without this call?
+  dplyr::mutate(across(ppt_fall:tmin_winter, .fns = scale)) %>% #
+  pivot_longer(cols = ppt_fall:tmin_winter, names_to = "VarSeason",
+               values_to = "Value") %>%
+  separate(VarSeason, c("Variable","season"), sep = "_") %>%
+  mutate(season = factor(season, levels = c("fall","winter","springSummer"),
+                         labels = c("Fall (Jul-Oct)",
+                                    "Winter (Nov-Feb)",
+                                    "Spring/Summer (Mar-Jun)"))) %>%
+  ggplot(  aes(Prev12, Value))+
+    geom_point()+
+    stat_smooth()+
+    theme_bw()+
+    facet_grid(Variable ~ season) +
+    geom_vline(xintercept = 2023) +
+    xlab("Previous 12 months")
+
+pepe.season.wide %>%
+  filter(Prev12 > 2021) %>%
+  ungroup() %>% ## but it's not grouped, maybe was taking as each row is a group without this call?
+  dplyr::mutate(across(ppt_fall:tmin_winter, .fns = scale)) %>% #
+  pivot_longer(cols = ppt_fall:tmin_winter, names_to = "VarSeason",
+               values_to = "Value") %>%
+  separate(VarSeason, c("Variable","season"), sep = "_") %>%
+  mutate(season = factor(season, levels = c("fall","winter","springSummer"),
+                         labels = c("Fall (Jul-Oct)",
+                                    "Winter (Nov-Feb)",
+                                    "Spring/Summer (Mar-Jun)"))) %>%
+  ggplot(  aes(Prev12, Value))+
+    geom_point()+
+    stat_smooth()+
+    theme_bw()+
+    facet_grid(Variable ~ season) +
+    geom_vline(xintercept = 2023) +
+    xlab("Previous 12 months")
+
+```
+
