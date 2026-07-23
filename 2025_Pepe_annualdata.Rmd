@@ -477,10 +477,11 @@ surv_wide <-
   ungroup() %>%
     distinct() %>%
   mutate(ch = case_when(heightInCentimeters > 0 ~ 1,
-                        heightInCentimeters == 0 ~ 0)) %>%
+                        heightInCentimeters == 0 ~ 0,
+                        is.na(heightInCentimeters) ~ 0)) %>%
   pivot_wider(names_from = date,
               id_cols = c(plantID, transectID, transplantSeason, isTransplant),
-              values_from = ch) %>%
+              values_from = ch, values_fill = 0) %>%
   arrange(transectID,transplantSeason) %>%
   distinct()
 
@@ -2449,7 +2450,11 @@ tms.fs <- mc_read_files(paths = "C:/Users/deprengm/Denver Botanic Gardens/Conser
 
 PRISM   
 ```{r, eval = FALSE}
+library(prism)
+library(raster)
 
+currentyr <- 2026
+prism_set_dl_dir("Q:/Research/All_Projects_by_Species/PRISM_data")
 pepeLL <- data.frame("coords.x1" = -106.26665, "coords.x2" = 40.1027)
 
 m.ppt <- lapply(prism_archive_subset("ppt", "monthly", years = 1986:currentyr, resolution = "4km"), function(x){
@@ -2538,6 +2543,37 @@ pepe.climate.monthly %>%
     geom_point() +
     stat_smooth() +
     facet_grid(Variable ~ season, scales = "free_y")
+
+pepe.annual %>%
+  group_by(Variable) %>%
+  mutate(scaledData = scale(Value)) %>%
+  ggplot( aes(Prev12, scaledData, color = Variable)) +
+    geom_point() +
+    stat_smooth() +
+    theme_bw()+
+    facet_wrap(~Variable) +
+    geom_vline(xintercept = 2023, linetype = "dotted")
+
+
+ggsave(filename = "Figures/Climate_2020_2026.jpg",
+pepe.annual %>%
+  group_by(Variable) %>%
+  filter(Prev12 > 2020) %>%
+  mutate(Variable = factor(Variable, levels = c("ppt","tmax","tmin"),
+                         labels = c("Precipitation","Max Temp","Min Temp"))) %>%
+  mutate(scaledData = scale(Value)) %>%
+  ggplot( aes(Prev12, scaledData, color = Variable)) +
+    geom_point() +
+    # stat_smooth() +
+    theme_bw()+
+    facet_wrap(~Variable) +
+    geom_vline(xintercept = 2023, linetype = "dashed")+
+    ylab("Scaled data") +
+    xlab("Year") +
+    geom_hline(yintercept = 0, linetype = "dotted") + 
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+  
+, width=175, height=90,units='mm', dpi=300)  
 
 pepe.season.wide %>%
   # filter(Prev12 < 2026) %>%
