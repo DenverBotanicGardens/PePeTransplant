@@ -321,13 +321,18 @@ plants25toadd %>%
   summarise(n = n()) %>%
   print(n = 47)
 
+plants25toadd %>%
+  dplyr::select(heightInCentimeters, isTransplant) %>%
+  filter(is.na(isTransplant))
+
 #### Add 2026 plants
 plants26toadd <- surv2026 %>%
   mutate(date = "2026-06-22") %>%
   mutate(recordedBy = "MEDLPlus") %>%
-  select(plant.ID, date, height..cm.:Comments, recordedBy, transectID, x...0.1m., y..0.5m.) %>%
+  dplyr::select(plant.ID, date, height..cm.:Comments, recordedBy, transectID, x...0.1m., y..0.5m.) %>%
   left_join(plants25toadd[,c("plantID","transplantSeason","transectPosition",
-                             "isTransplant")], by = c("plant.ID" = "plantID"))
+                             "isTransplant")], by = c("plant.ID" = "plantID")) %>%
+  tidyr::replace_na(list(isTransplant = 0))
 
 names(plants26toadd) <- names(plants25toadd)
 
@@ -339,7 +344,7 @@ pepe23_26 <- surv2023_2024 %>%
   bind_rows(plants26toadd) %>%
   mutate(Date = as.Date(date)) %>%
   filter(!(transectID %in% c(15, 21,16))) %>%
-  select(Date,plantID:numberReproductiveStructures,recordedBy, transectID:isTransplant) %>%
+  dplyr::select(Date,plantID:numberReproductiveStructures,recordedBy, transectID:isTransplant) %>%
   arrange(Date) %>%
   left_join(trans2024[,2:4], by = c("transectID" = "transectId")) %>% 
   mutate(Year = format(as.Date(Date, format="%d/%m/%Y"),"%Y")) %>%
@@ -354,7 +359,7 @@ pepe23_26 <- surv2023_2024 %>%
   ungroup() 
 
 
-## No, there are only 100 spring and 100 fall to begin with in 2023. Can't drop from 190!!
+## There was one transplant transect lost
 pepe23_26 %>%
   filter(isTransplant == 1) %>%
   filter(heightInCentimeters > 0) %>%
@@ -362,7 +367,7 @@ pepe23_26 %>%
   summarise(n = n()) %>%
   arrange(Year, transplantSeason)
 
-## 95 of them (should be 100) and they are all duplicated. That comes to the 190 because spring measurement and fall. Did 5 die by the fall?
+## 95 of them (should be 100) and they are all duplicated. That comes to the 190 because spring measurement and fall. Lost transect 16 up where people park
 
 pepe23_26 <- pepe23_26 %>%
   group_by(plantID, Year) %>%
@@ -453,16 +458,13 @@ surv_wide <-
   mutate(transectPosition = as.numeric(transectPosition)) %>%
   bind_rows(plants25toadd) %>%
   bind_rows(plants26toadd) %>%
-    mutate(date = case_when(date == "6/25/2025" ~ "6/24/2025",
-                            ## To make averages for the few doubles in 2023
-                            date == "2023-05-31" ~ "2023-10-16",
-                            TRUE ~ date)) %>%
+  mutate(date = case_when(date == "6/25/2025" ~ "6/24/2025",
+                          ## To make averages for the few doubles in 2023
+                          date == "2023-05-31" ~ "2023-10-16",
+                          TRUE ~ date)) %>%
   mutate(Date = as.Date(date)) %>%
-  filter(!(transectID %in% c(15, 21,16))) %>%
-  ## Can ignore the 5 repeat collections of Fall transplants
-  filter(recordedBy != "MEDL_AJ") %>%
-  # filter(!(transectID %in% c(15,16, 21))) %>%
-  select(Date,plantID:numberReproductiveStructures,transectID:isTransplant) %>%
+  filter(!(transectID %in% c(15, 21,16))) %>% ## should get rid of zeros from being gone.
+  dplyr::select(Date,plantID:numberReproductiveStructures,transectID:isTransplant) %>%
   arrange(Date) %>%
   group_by(plantID, date) %>%
   add_count() %>%
@@ -475,38 +477,34 @@ surv_wide <-
            numberReproductiveStructures = case_when(n == 2 ~ mean(numberReproductiveStructures),
                                            n == 1 ~ max(numberReproductiveStructures))) %>%
   ungroup() %>%
-    distinct() %>%
+  distinct() %>%
   mutate(ch = case_when(heightInCentimeters > 0 ~ 1,
                         heightInCentimeters == 0 ~ 0,
                         is.na(heightInCentimeters) ~ 0)) %>%
   pivot_wider(names_from = date,
               id_cols = c(plantID, transectID, transplantSeason, isTransplant),
               values_from = ch, values_fill = 0) %>%
-  arrange(transectID,transplantSeason) %>%
-  distinct()
+  arrange(transectID,transplantSeason)
 
 
 ## CJS
 surv_wide <- surv_wide %>%
-  replace_na(list(`2023-10-16` = 0,
-                  `2024-06-24` = 0,
-                  `2025-06-24` = 0,
-                  `2026-06-22` = 0)) %>%
   unite(ch, `2023-10-16`:`2026-06-22`, sep = "")
 
 
-## Remove the four without alive ever
+## Remove the four without alive ever (310 with no alive ever?!?!) - these seem to be duplicate with all zeros
 surv_wide %>%
   filter(!grepl("1",ch))
+
+surv_wide %>%
+  filter(plantID %in% c(11,16,12,17,18,19))
 
 surv_wide <- surv_wide %>%
   filter(grepl("1", ch))
 
-
 ```
 
 
-Column 'ch' missing
 ## Shouldn't penalize plots for having transplants with lower survival 
 ```{r}
 pepe_ch <- surv_wide %>%
@@ -587,7 +585,7 @@ Phi.table %>%
             lcl = mean(lcl),
             ucl = mean(ucl))
 
-
+## In-situ in the control compared to the transplant
 Phi.table %>%
   group_by(Type) %>%
   summarise(est = mean(estimate),
@@ -606,6 +604,7 @@ Phi.table %>%
 ## Transplants compared to in situ  
 ```{r}
 
+## missing three transects, only one is treatment so are short 5 transplants
 surv_wide %>%
   replace_na(list(isTransplant = 0)) %>%
   group_by(isTransplant) %>%
@@ -686,19 +685,35 @@ Phi.table <- get.real(CJS.pepe, "Phi", se = TRUE) %>%
   distinct(estimate, lcl, ucl, .keep_all = TRUE) 
 
 ## Add the number of individuals?
-
+## Lost three plots, one of which is a transplant plot (16)
+numInd <- pepe23_26 %>%
+  group_by(Year, isTransplant) %>%
+  filter(heightInCentimeters > 0 & !is.na(heightInCentimeters)) %>%
+  summarise(n = n()) %>%
+  rename(Transplant = isTransplant) %>%
+  mutate(Transplant = as.factor(Transplant)) %>%
+  left_join(Phi.table, by = c("Year" = "time","Transplant" = "Transplant")) %>%
+  filter(!is.na(lcl))
 
 ## Difference in survival between Control and Transplant, color is by block
 ggsave(filename = "Figures/SurvivalCJS_TransplantInSitu_Time_2026.jpg",
 
+       
+   
 ggplot(Phi.table, aes(time, estimate, color = Transplant)) +
   geom_point(position = position_dodge(width = 0.5)) +
-  geom_errorbar(aes(ymin = lcl, ymax = ucl), position = position_dodge(width = 0.5))+
+  geom_errorbar(aes(ymin = lcl, ymax = ucl), position = position_dodge(width = 0.5),
+                width = 0.5)+
   theme_bw() +
   ylab("Survival") +
   xlab("Year") +
-  scale_color_discrete(labels = c("In-situ","Transplant"))+
-  xlab("2023-2026")
+  scale_color_manual(labels = c("In-situ","Transplant"),
+                       values = c("tomato","grey30")) +
+  xlab("") +
+  scale_x_discrete(labels = c("2023-2024","2024-2025","2025-2026")) +
+  geom_text(data = numInd, aes(x = Year, y = lcl - 0.05, color = Transplant, label = n), 
+            position = position_dodge(width = 0.5), show.legend  = FALSE) 
+  
 
 
 , width=120, height=100,units='mm', dpi=300)  
@@ -778,7 +793,7 @@ ggsave(filename = "Figures/SurvivalCJS_TransplantSeason.jpg",
 
 ggplot(Phi.table, aes(TransplantSeason, estimate)) +
   geom_point() +
-  geom_errorbar(aes(ymin = lcl, ymax = ucl))+
+  geom_errorbar(aes(ymin = lcl, ymax = ucl), width = 0.25)+
   theme_bw() +
   ylab("Survival")+
   xlab("") +
@@ -865,7 +880,7 @@ survey2bind <- surv2023_2024 %>%
   ## Can ignore the 5 repeat collections of Fall transplants
   filter(recordedBy != "MEDL_AJ") %>%
   left_join(trans2024[,c("transectId","type_CT_TT")], by = c("transectID" = "transectId")) %>%
-  select(Date,Year,plantID:numberReproductiveStructures,transectID:transplantSeason,isTransplant, recordedBy) %>%
+  dplyr::select(Date,Year,plantID:numberReproductiveStructures,transectID:transplantSeason,isTransplant, recordedBy) %>%
   mutate(surveyID = as.numeric(as.factor(paste(date,recordedBy)))) %>%
   group_by(transectID,surveyID,Date,recordedBy, Year) %>%
   summarise(plants = n()) %>%
@@ -906,7 +921,7 @@ surv_wide_robust <-
   ## Can ignore the 5 repeat collections of Fall transplants
   filter(!(recordedBy == "MEDL_AJ")) %>% #& transectID == 34
   left_join(trans2024[,c("transectId","type_CT_TT")], by = c("transectID" = "transectId")) %>%
-  select(Date,plantID:numberReproductiveStructures,transectID:transplantSeason,isTransplant, recordedBy, type_CT_TT) %>%
+  dplyr::select(Date,plantID:numberReproductiveStructures,transectID:transplantSeason,isTransplant, recordedBy, type_CT_TT) %>%
   left_join(data.frame(survey2bind[,c(1:5)]), by = c("transectID" = "transectID", "recordedBy" = "recordedBy", 
                                                      "Date" = "Date")) %>%
   filter(heightInCentimeters > 0 & !is.na(heightInCentimeters)) %>%
@@ -950,15 +965,8 @@ No double in 2026 - but could just have a single?
 surv2023_2024 %>%
   group_by(transectID, date, recordedBy) %>%
   summarise(n = n()) %>%
-  # group_by(transectID) %>%
-  # summarise(surveys = n()) %>%
-  # filter(surveys == 4) %>%
   print(n = 150)
 
-
-pepe23_26 %>%
-  group_by(transectID,)
-  ggplot()
 ```
 
 Transect    surveys
@@ -1002,6 +1010,8 @@ Transect    surveys
 39            2,3,  5         
 40          1,2,3,  5   
 
+
+Add 6 for 2026
 # Huggins Closed Robust Design Multi-state with State Probabilities  
 "CRDMSOHug"
 
