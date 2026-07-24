@@ -359,6 +359,28 @@ pepe23_26 <- surv2023_2024 %>%
   ungroup() 
 
 
+
+pepe23_26_Robust <- surv2023_2024 %>%
+  mutate(transplantSeason = case_when( !(transplantSeason %in% c("Spring", "Fall")) ~ NA,
+                                       TRUE ~ transplantSeason)) %>%
+  mutate(transectPosition = as.numeric(transectPosition)) %>%
+  bind_rows(plants25toadd) %>%
+  bind_rows(plants26toadd) %>%
+  mutate(Date = as.Date(date)) %>%
+  filter(!(transectID %in% c(15, 21,16))) %>%
+  dplyr::select(Date,plantID:numberReproductiveStructures,recordedBy, transectID:isTransplant) %>%
+  arrange(Date) %>%
+  left_join(trans2024[,2:4], by = c("transectID" = "transectId")) %>% 
+  mutate(Year = format(as.Date(Date, format="%d/%m/%Y"),"%Y")) %>%
+  mutate(block = case_when(plantID == 139 ~ 5,
+                           TRUE ~ block)) %>%
+  mutate(type_CT_TT = case_when(plantID == 139 ~ "TT",
+                                TRUE ~ type_CT_TT)) %>%
+  mutate(transectID = case_when(plantID == 139 ~ 10,
+                                TRUE ~ transectID)) %>%
+  group_by(Date, plantID) %>%
+  mutate(recordedBy = paste0("Obs", row_number()))
+
 ## There was one transplant transect lost
 pepe23_26 %>%
   filter(isTransplant == 1) %>%
@@ -417,11 +439,25 @@ pepe23_26 %>%
     geom_boxplot(outliers = FALSE) +
     geom_point(position = position_jitterdodge(jitter.width = 0.5, jitter.height = 0)) +
     theme_bw() +
+    ylab("Density") +
     scale_fill_manual("Transect", values = c("#8B475D","grey50"),
                        labels = c("Control","Transplant"))
 
 
 , width=150, height=100,units='mm', dpi=300) 
+
+# Density over time
+pepe23_26 %>%
+  filter(isTransplant != 1 | is.na(isTransplant)) %>%
+  # filter(Year != 2023) %>%
+  group_by(transectID, block, Year, type_CT_TT) %>%
+  summarise(density2m = n()/5) %>%
+  group_by( Year,type_CT_TT) %>%
+  summarize(mean = mean(density2m),
+             LCL = HDInterval::hdi(density2m)[1], UCL = HDInterval::hdi(density2m)[2])
+  
+library(HDInterval)
+
 
 pepe23_26 %>%
   filter(heightInCentimeters > 0) %>%
@@ -674,6 +710,7 @@ Phi.table
 ```
 
 
+
 Change in survival over time?
 ```{r}
 CJS.pepe <- mark(pepe.pr, pepe.dd, model = "CJS",
@@ -866,6 +903,7 @@ Can only have one strata per primary period
 ?? what to do with 2026?
 ```{r}
 
+table(pepe23_26$recordedBy, pepe23_26$Year)
 
 ##Need doubles in 2023 as well for the ones transect 10 on, that got measured
 # Label Spring as Survey1, Fall Survey2, first and second (3,4) 2024, and 5 as 2025. Need a dummy 6th secondary. 
@@ -1670,17 +1708,15 @@ ggplot(   aes(type_CT_TT, survRate)) +
   theme_bw() +
   scale_x_discrete(labels = c("CT" = "Control", "TT" = "Transplant")) +
   xlab("Transect") +
-  ylab("Percent survival") 
-# +
-#   geom_hline(yintercept = 0.7889) +
-#   geom_hline(yintercept = 0.8877)
+  ylab("Percent survival")
+
 
 , width=120, height=100,units='mm', dpi=300)  
 
 ## 2023 to 2026?
 ### COME BACK HERE!
 pepe23_26 %>%
-  pivot_wider(id_cols = c(transect, type_CT_TT, plantID), names_from = year, names_prefix = "Year",
+  pivot_wider(id_cols = c(transect, type_CT_TT, plantID), names_from = Year, names_prefix = "Year",
               values_from = surv) %>%
   group_by(transec, type_CT_TT) %>%
   # filter(is.na(Year2023))
@@ -2162,12 +2198,6 @@ glm.transplantSeason <- glm()
 glm.list <- list(brnull,br1a,br2,br3,br1b,br1,br2a, br3a)
 glm.names <- as.character(unlist(lapply(glm.list,formula)))
 (glm.results <- aictab(glm.list, modnames=glm.names))
-
-```
-
-
-### Run with rmark  
-```{r}
 
 ```
 
