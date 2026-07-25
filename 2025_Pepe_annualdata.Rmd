@@ -766,8 +766,7 @@ Phi.table
 ```{r}
 ## Need to remove the 4? repeats? Maybe some of the transplants that aren't really got added? 
 surv_wide %>%
-  replace_na(list(isTransplant = 0,
-                  transplantSeason = "NULL")) %>%
+  filter(!is.na(transplantSeason)) %>%
   group_by(isTransplant, transplantSeason) %>%
   summarise(n = n())
 
@@ -778,12 +777,12 @@ surv_wide %>%
 
 pepe_ch_trSeason <- surv_wide %>%
   replace_na(list(isTransplant = 0)) %>%
-              left_join(trans2024[,2:4], by = c("transectID" = "transectId")) %>%
+  left_join(trans2024[,2:4], by = c("transectID" = "transectId")) %>%
   filter(isTransplant == 1) %>%
   mutate(Trans = as.factor(transectID),
          Type = as.factor(type_CT_TT),
          TransplantSeason = as.factor(transplantSeason)) %>%
-  replace_na(list(isTransplant = 0))           
+  replace_na(list(isTransplant = 0))
 
 transSeasontdf <- pepe_ch_trSeason %>%
   distinct(TransplantSeason) 
@@ -841,8 +840,54 @@ ggplot(Phi.table, aes(TransplantSeason, estimate)) +
 
 # The few transplanted individuals compared to all the in-situ plants. 
 Phi.table
+
 ```
 
+## over time
+```{r}
+
+
+CJS.pepe <- mark(pepe.pr, pepe.dd, model = "CJS",
+                 model.parameters = list(p = list(formula = ~ 1),
+                                                    # fixed = list(index = p.indices, value = p.values)),
+                                         Phi = list(formula = ~ 1 + TransplantSeason:time)))
+
+Phi.table <- get.real(CJS.pepe, "Phi", se = TRUE) %>%
+  distinct(estimate, lcl, ucl, .keep_all = TRUE) 
+
+
+numTransInd <- pepe23_26 %>%
+  replace_na(list(isTransplant = 0)) %>%
+  left_join(trans2024[,2:4], by = c("transectID" = "transectId")) %>%
+  filter(isTransplant == 1) %>%
+  group_by(Year, transplantSeason) %>%
+  filter(heightInCentimeters > 0 & !is.na(heightInCentimeters)) %>%
+  summarise(n = n()) %>%
+  left_join(Phi.table, by = c("Year" = "time","transplantSeason" = "TransplantSeason")) %>%
+  filter(!is.na(lcl))
+
+## Difference in survival between Control and Transplant, color is by block
+ggsave(filename = "Figures/SurvivalCJS_TransplantSeason_time.jpg",
+
+ggplot(Phi.table, aes(time, estimate, color = TransplantSeason )) +
+  geom_point(position = position_dodge(width = 0.5)) +
+  geom_errorbar(aes(ymin = lcl, ymax = ucl), width = 0.25,position = position_dodge(width = 0.5))+
+  theme_bw() +
+  ylab("Survival")+
+  xlab("") +
+  scale_color_manual("Transplant\nseason",values = c("darkgreen","goldenrod")) +
+  geom_text(data = numTransInd, aes(x = Year, y = lcl - 0.05, color = transplantSeason, label = n), 
+            position = position_dodge(width = 0.5), show.legend  = FALSE) +
+  scale_x
+
+
+, width=120, height=100,units='mm', dpi=300)
+
+# The few transplanted individuals compared to all the in-situ plants. 
+Phi.table
+```
+
+## BACK HERE
 ####################################################################################################################
 
 
