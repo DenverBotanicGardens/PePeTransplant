@@ -58,6 +58,9 @@ surv2023_2024 <- data2024 %>%
   left_join(plants2024, by = "plantID") %>%
   filter(recordedBy != "Michelle DePrenger-Levin, Adriana Jacobi") 
 
+surv2023_2024_robust <- surv2023_2024 %>%
+  filter(id.x != 3770)
+
 surv2023_2024 <- surv2023_2024 %>%
   filter(id.x != 3770) %>%
   group_by(date) %>%
@@ -170,7 +173,7 @@ surv2023_2024 <- surv2023_2024 %>%
   # mutate(recordedBy = case_when(recordedBy == "Michael Bone, Stanton Schell" ~ "MB_SS",
   #                               recordedBy == "Mike Bone, Stanton Schell" ~ "MB_SS",
   #                               recordedBy == "Arich Fruehling, Leah Veldhuisen" ~ "AF_LV",
-  #                               recordedBy == "Geena Poulter, Michelle DePrenger-Levin" ~ "GP_MEDL",
+  #                              v recordedBy == "Geena Poulter, Michelle DePrenger-Levin" ~ "GP_MEDL",
   #                               recordedBy == "Michelle DePrenger-Levin" ~ "MEDL",
   #                               recordedBy == "Michelle DePrenger-Levin, Adriana Jacobi" ~ "MEDL_AJ",
   #                               recordedBy == "Michael Guidi, Brooke Washburn, Syed Jalalzai" ~ "MG_BW_SJ",
@@ -358,9 +361,9 @@ pepe23_26 <- surv2023_2024 %>%
   filter(!duplicated(plantID)) %>%
   ungroup() 
 
+table(surv2023_2024$recordedBy, surv2023_2024$date)
 
-
-pepe23_26_Robust <- surv2023_2024 %>%
+pepe23_26_Robust <- surv2023_2024_robust %>%
   mutate(transplantSeason = case_when( !(transplantSeason %in% c("Spring", "Fall")) ~ NA,
                                        TRUE ~ transplantSeason)) %>%
   mutate(transectPosition = as.numeric(transectPosition)) %>%
@@ -369,7 +372,6 @@ pepe23_26_Robust <- surv2023_2024 %>%
   mutate(Date = as.Date(date)) %>%
   filter(!(transectID %in% c(15, 21,16))) %>%
   dplyr::select(Date,plantID:numberReproductiveStructures,recordedBy, transectID:isTransplant) %>%
-  arrange(Date) %>%
   left_join(trans2024[,2:4], by = c("transectID" = "transectId")) %>% 
   mutate(Year = format(as.Date(Date, format="%d/%m/%Y"),"%Y")) %>%
   mutate(block = case_when(plantID == 139 ~ 5,
@@ -378,8 +380,10 @@ pepe23_26_Robust <- surv2023_2024 %>%
                                 TRUE ~ type_CT_TT)) %>%
   mutate(transectID = case_when(plantID == 139 ~ 10,
                                 TRUE ~ transectID)) %>%
-  group_by(Date, plantID) %>%
+  group_by(Year, plantID) %>%
   mutate(recordedBy = paste0("Obs", row_number()))
+
+
 
 ## There was one transplant transect lost
 pepe23_26 %>%
@@ -878,7 +882,7 @@ ggplot(Phi.table, aes(time, estimate, color = TransplantSeason )) +
   scale_color_manual("Transplant\nseason",values = c("darkgreen","goldenrod")) +
   geom_text(data = numTransInd, aes(x = Year, y = lcl - 0.05, color = transplantSeason, label = n), 
             position = position_dodge(width = 0.5), show.legend  = FALSE) +
-  scale_x
+  scale_x_discrete(labels = c("2023-2024","2024-2025","2025-2026")) 
 
 
 , width=120, height=100,units='mm', dpi=300)
@@ -886,10 +890,6 @@ ggplot(Phi.table, aes(time, estimate, color = TransplantSeason )) +
 # The few transplanted individuals compared to all the in-situ plants. 
 Phi.table
 ```
-
-## BACK HERE
-####################################################################################################################
-
 
 ##### Pradel recruitment ###################################
 ```{r}
@@ -934,7 +934,7 @@ Pradel.pepe.all <- mark(pepe.proc.Prad, pepe.dd.Prad, model = "Pradrec",
 f.all <- get.real(Pradel.pepe.all, "f", se = TRUE) %>%
   distinct(estimate, lcl, ucl, .keep_all = TRUE) %>%
   left_join(TransTreatdf) 
-
+# 0.18 (0.15-0.22) # 2026
 
 
 ```
@@ -947,66 +947,66 @@ Do I need to add a dummy second measurement for 2025 that wasn't taken?
 Can only have one strata per primary period
 ?? what to do with 2026?
 ```{r}
+## three observers in 2023 (a couple accidental repeats?) but otherwise have the double in 2023 (spring and fall) and the double in 2024 (mutlple teams same visit)
+table(pepe23_26_Robust$recordedBy, pepe23_26_Robust$Year) ## nope, only 6 in 2024, should be multiple in 2023 as well
 
-table(pepe23_26$recordedBy, pepe23_26$Year)
+## Start here! remove Obs3 (2)
+pepe23_26_Robust %>%
+  filter(recordedBy == "Obs3")
+pepe23_26_Robust %>%
+  filter(plantID %in% c(144, 152))
 
 ##Need doubles in 2023 as well for the ones transect 10 on, that got measured
 # Label Spring as Survey1, Fall Survey2, first and second (3,4) 2024, and 5 as 2025. Need a dummy 6th secondary. 
-survey2bind <- surv2023_2024 %>%
-  mutate(transplantSeason = case_when( !(transplantSeason %in% c("Spring", "Fall")) ~ NA,
-                                       TRUE ~ transplantSeason)) %>%
-  mutate(transectPosition = as.numeric(transectPosition)) %>%
-  bind_rows(plants25toadd) %>%
-  mutate(Date = as.Date(date)) %>%
-  mutate(Year = format(as.Date(Date, format="%Y-%m-%d"),"%Y")) %>%
-  filter(!(transectID %in% c(15, 21,16))) %>%
-  ## Can ignore the 5 repeat collections of Fall transplants
-  filter(recordedBy != "MEDL_AJ") %>%
-  left_join(trans2024[,c("transectId","type_CT_TT")], by = c("transectID" = "transectId")) %>%
-  dplyr::select(Date,Year,plantID:numberReproductiveStructures,transectID:transplantSeason,isTransplant, recordedBy) %>%
-  mutate(surveyID = as.numeric(as.factor(paste(date,recordedBy)))) %>%
-  group_by(transectID,surveyID,Date,recordedBy, Year) %>%
-  summarise(plants = n()) %>%
-  group_by(transectID, Year) %>%
-  arrange(Date) %>%
-  mutate(survID = row_number()) %>%
-  mutate(surveyID = case_when(Date == "2023-05-31" ~ 1,
-                              Date == "2023-10-16" ~ 2,
-                              (survID == 1 & Date == "2024-06-24") ~ 3, ## and the other one is four
-                              (survID == 2 & Date == "2024-06-24") ~ 4, 
-                              Date == "2025-06-24" ~ 5,
-                              TRUE ~ surveyID))
-
-survey2bind %>%
-  group_by(surveyID, Date, survID) %>%
-  summarise(n = n())
-
-## Accidental repeats
-  surv2023_2024 %>%
-    filter(recordedBy == "MEDL_AJ")
-  
-  surv2023_2024 %>%
-    filter(isTransplant == 1 & transectID == 34)
-  
-  surv2023_2024 %>%
-    filter(plantID == 1629)
+# survey2bind <- surv2023_2024 %>%
+#   mutate(transplantSeason = case_when( !(transplantSeason %in% c("Spring", "Fall")) ~ NA,
+#                                        TRUE ~ transplantSeason)) %>%
+#   mutate(transectPosition = as.numeric(transectPosition)) %>%
+#   bind_rows(plants25toadd) %>%
+#   mutate(Date = as.Date(date)) %>%
+#   mutate(Year = format(as.Date(Date, format="%Y-%m-%d"),"%Y")) %>%
+#   filter(!(transectID %in% c(15, 21,16))) %>%
+#   ## Can ignore the 5 repeat collections of Fall transplants
+#   filter(recordedBy != "MEDL_AJ") %>%
+#   left_join(trans2024[,c("transectId","type_CT_TT")], by = c("transectID" = "transectId")) %>%
+#   dplyr::select(Date,Year,plantID:numberReproductiveStructures,transectID:transplantSeason,isTransplant, recordedBy) %>%
+#   mutate(surveyID = as.numeric(as.factor(paste(date,recordedBy)))) %>%
+#   group_by(transectID,surveyID,Date,recordedBy, Year) %>%
+#   summarise(plants = n()) %>%
+#   group_by(transectID, Year) %>%
+#   arrange(Date) %>%
+#   mutate(survID = row_number()) %>%
+#   mutate(surveyID = case_when(Date == "2023-05-31" ~ 1,
+#                               Date == "2023-10-16" ~ 2,
+#                               (survID == 1 & Date == "2024-06-24") ~ 3, ## and the other one is four
+#                               (survID == 2 & Date == "2024-06-24") ~ 4, 
+#                               Date == "2025-06-24" ~ 5,
+#                               TRUE ~ surveyID))
+# 
+# survey2bind %>%
+#   group_by(surveyID, Date, survID) %>%
+#   summarise(n = n())
+# 
+# ## Accidental repeats
+#   surv2023_2024 %>%
+#     filter(recordedBy == "MEDL_AJ")
+#   
+#   surv2023_2024 %>%
+#     filter(isTransplant == 1 & transectID == 34)
+#   
+#   surv2023_2024 %>%
+#     filter(plantID == 1629)
 
 ## Now add number for 2023 survey 1, 2024 has surveys 2 and 3 when doubled, 2025 has survey 4
-surv_wide_robust <-
-  surv2023_2024 %>%
-  filter(!(plantID == 1629 & heightInCentimeters == 0)) %>%
-  mutate(transplantSeason = case_when( !(transplantSeason %in% c("Spring", "Fall")) ~ NA,
-                                       TRUE ~ transplantSeason)) %>%
-  mutate(transectPosition = as.numeric(transectPosition)) %>%
-  bind_rows(plants25toadd) %>%
-  mutate(Date = as.Date(date)) %>%
-  filter(!(transectID %in% c(15, 21,16))) %>%
-  ## Can ignore the 5 repeat collections of Fall transplants
-  filter(!(recordedBy == "MEDL_AJ")) %>% #& transectID == 34
-  left_join(trans2024[,c("transectId","type_CT_TT")], by = c("transectID" = "transectId")) %>%
-  dplyr::select(Date,plantID:numberReproductiveStructures,transectID:transplantSeason,isTransplant, recordedBy, type_CT_TT) %>%
-  left_join(data.frame(survey2bind[,c(1:5)]), by = c("transectID" = "transectID", "recordedBy" = "recordedBy", 
-                                                     "Date" = "Date")) %>%
+surv_wide_robust <- pepe23_26_Robust %>%
+  filter(recordedBy != "Obs3") %>%
+  mutate(surveyID = case_when(Date == "2023-05-31" ~ 1,
+                              Date == "2023-10-16" ~ 2,
+                              (recordedBy == "Obs1" & Date == "2024-06-24") ~ 3, ## and the other one is four
+                              (recordedBy == "Obs2" & Date == "2024-06-24") ~ 4, 
+                              (recordedBy == "Obs2" & Date == "2024-06-25") ~ 4, 
+                              Date == "2025-06-24" ~ 5,
+                              Year == 2026 ~ 6)) %>%
   filter(heightInCentimeters > 0 & !is.na(heightInCentimeters)) %>%
   arrange(surveyID) %>%
   replace_na(list(reproductiveStatus = 0)) %>%
@@ -1015,9 +1015,9 @@ surv_wide_robust <-
                          (heightInCentimeters > 0 & reproductiveStatus == 1) ~ "R")) %>%
     ## Need to have each year (primary period) have only one strata; sapply 
   group_by(plantID, Year) %>%
-    mutate(Obs = case_when("R" %in% Obs ~ "R",
+    mutate(Obs = case_when(any(Obs == "R") ~ "R",
                            TRUE ~ Obs)) %>%
-    ungroup() %>% # arrange(plantID, Date) %>% dplyr::select(plantID, Date, reproductiveStatus, Obs) %>% print(n = 100)
+    ungroup() %>% 
       ## One accidental duplicate record in the same survey, same observers
     filter(!(plantID == 1629 & surveyID == 3 & Obs == "0")) %>%
     pivot_wider(names_from = surveyID,
@@ -1027,17 +1027,22 @@ surv_wide_robust <-
               names_prefix = "Survey"
               ) %>%
   arrange(transectID, plantID, transplantSeason) %>%
-  unite(ch, Survey1:Survey5, sep = "") %>% 
+  dplyr::select(!SurveyNA) %>%
+  unite(ch, Survey1:Survey6, sep = "") %>%
   ### remove once we have 2026 data
-  mutate(ch = paste0(ch, "0")) 
-  
+  mutate(ch = paste0(ch, "0"))
+
+## are all capture histories 7? Where's the extra one from !! oh, the one at the end, all zeros with "remove once we have 2026 data"! Need a 7th 
+surv_wide_robust 
+
 library(stringr)
-# surv_wide_robust %>% group_by(Year, plantID) %>% summarise(State = paste0(Obs, collapse = "")) %>%
-#   mutate(States = str_length(State)) %>%
-#   filter(States > 1)
-## Any that are always dead like AsMi?? Nope, all look good, have at least one V or R
+
+## Are these the removed? No these are from random transects
 surv_wide_robust %>%
   filter(!(grepl("R",ch) | grepl("V",ch)))
+
+surv_wide_robust <- surv_wide_robust %>%
+  filter((grepl("R",ch) | grepl("V",ch)))
 
 ```
 
@@ -1050,6 +1055,15 @@ surv2023_2024 %>%
   summarise(n = n()) %>%
   print(n = 150)
 
+surv2023_2024_robust %>%
+  group_by(transectID, date, recordedBy) %>%
+  summarise(n = n()) %>%
+ggplot(  aes(transectID, n, color = recordedBy)) +
+  geom_point(position = position_dodge(width = 0.1))+
+  facet_wrap(~date)
+
+### need to treat may and october as Obs1 and Obs2 for 2023
+### why aren't there 
 ```
 
 Transect    surveys
@@ -1145,8 +1159,9 @@ pepeRobust <- convert.inp("Data/Pepe_mark_multistate.inp",
                        covariates = NULL,
                        use.comments = FALSE)  
 
-# 0 for secondary and 1 for last secondary !! This is the interval between occasions, should be one less than surveys, but between 4 and 5 is primary, a year!? So there is a dummy second 2025 observation that doesn't exist
-time.intervals <- c(0,1,0,1,0)
+# 0 for secondary and 1 for last secondary !! This is the interval between occasions, should be one less than surveys, but between 4 and 5 is primary, a year!? So there is a dummy second 2025 observation that doesn't exist 
+## Need to add a dummy second 2025 and 2026? or just 2026?
+time.intervals <- c(0,1,0,1,0,0)
 
 pepe.pr <- process.data(pepeRobust, model = "CRDMSOHug", begin.time = 2023, groups = "Trans",
                                # strata.labels = c("R","V"),
@@ -1169,13 +1184,16 @@ p.missing3 <- pindex %>%
   filter(group %in% c(16) & session == "2024" & time == "1")
 p.missing4 <- pindex %>%
   filter(group %in% c(12,16,20,25,31,33,35,36,38,39,40) & session == "2024" & time == "2")
-### In 2025, have all zeros for the dummy last second observation
-p.missing6 <- pindex %>%
-  filter(session == "2025" & Time == 1)
+### In 2025
+# p.missing6 <- pindex %>%
+#   filter(session == "2025" & Time == 1)
 p.missingTransect <- pindex %>%
-  filter(group %in% c(15,21))
+  filter(group %in% c(15,21,16))
+### In 2026, have all zeros for the dummy last second observation
+p.missing7 <- pindex %>%
+  filter(session == "2026" & Time == 1
 
-
+## STart above here, make sure fixing variables is correct for 2026
 
 ## Fixed indices
 p.indices <- c(p.missing1$par.index,p.missing3$par.index,p.missing4$par.index,p.missingTransect$par.index, p.missing6$par.index)
@@ -1195,7 +1213,10 @@ c.missing4 <- cindex %>%
 c.missing6 <- cindex %>%
   filter(session == "2025" & time == "2")
 c.missingTransect <- cindex %>%
-  filter(group %in% c(15,21))
+  filter(group %in% c(15,21,16))
+c.missing7 <- cindex %>%
+  filter(session == "2026" & time == "2")
+
 ## Fixed indices
 c.indices <- c(c.missing1$par.index,c.missing3$par.index,c.missing4$par.index,c.missingTransect$par.index, c.missing6$par.index)
 c.values <- rep(0, length(c.indices))
