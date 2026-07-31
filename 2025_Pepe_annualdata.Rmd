@@ -1153,8 +1153,12 @@ pepeRobust <- convert.inp("Data/Pepe_mark_multistate.inp",
                        use.comments = FALSE)  
 
 # 0 for secondary and 1 for last secondary !! This is the interval between occasions, should be one less than surveys, but between 4 and 5 is primary, a year!? So there is a dummy second 2025 observation that doesn't exist 
-## Need to add a dummy second 2025 and 2026? or just 2026?
-time.intervals <- c(0,1,0,1,0,0)
+## In RMark's internal code, the robust.occasions function strictly expects every primary period to contain at least two secondary sessions. Because your last three primary periods only have 1 session each, you do not have a closing 0 transition, which crashes the function.To fix this, you must pad your single-session years with a dummy "structural zero" session. This tricks RMark into recognizing them as valid robust periods, and then you manually tell the software that no sampling actually happened on those dummy days.
+# Secondary periods are specified in Program MARK as encounter occasions with
+# time interval lengths of 0, and time intervals between primary periods have length >0. 
+#    23-Obs1, 23-Obs2    24-Obs1, 24-Obs2  25  26
+time.intervals <-  c(0, 1, 0, 1, 1, 1, 0)
+### START HERE! need to add a dummy second for 2025 AND 2026
 
 pepe.pr <- process.data(pepeRobust, model = "CRDMSOHug", begin.time = 2023, groups = "Trans",
                                # strata.labels = c("R","V"),
@@ -1178,13 +1182,12 @@ p.missing3 <- pindex %>%
 p.missing4 <- pindex %>%
   filter(group %in% c(12,16,20,25,31,33,35,36,38,39,40) & session == "2024" & time == "2")
 ### In 2025
-# p.missing6 <- pindex %>%
-#   filter(session == "2025" & Time == 1)
+p.missing6 <- pindex %>%
+  filter(session == "2026" & Time == 1)
 p.missingTransect <- pindex %>%
   filter(group %in% c(15,21,16))
 ### In 2026, have all zeros for the dummy last second observation
-p.missing7 <- pindex %>%
-  filter(session == "2026" & Time == 1)
+
 
 ## STart above here, make sure fixing variables is correct for 2026
 
@@ -1204,11 +1207,9 @@ c.missing3 <- cindex %>%
 c.missing4 <- cindex %>%
   filter(group %in% c(12,16,20,25,31,33,35,36,38,39,40) & session == "2024" & time == "2")
 c.missing6 <- cindex %>%
-  filter(session == "2025" & time == "2")
+  filter(session == "2026" & time == "2")
 c.missingTransect <- cindex %>%
   filter(group %in% c(15,21,16))
-c.missing7 <- cindex %>%
-  filter(session == "2026" & time == "2")
 
 ## Fixed indices
 c.indices <- c(c.missing1$par.index,c.missing3$par.index,c.missing4$par.index,c.missingTransect$par.index, c.missing6$par.index)
