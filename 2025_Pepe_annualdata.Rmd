@@ -58,6 +58,7 @@ surv2023_2024 <- data2024 %>%
   left_join(plants2024, by = "plantID") %>%
   filter(recordedBy != "Michelle DePrenger-Levin, Adriana Jacobi") 
 
+## just don't get rid of duplicates by date
 surv2023_2024_robust <- surv2023_2024 %>%
   filter(id.x != 3770)
 
@@ -95,6 +96,11 @@ plants2025 <- plants2025 %>%
 
 ## 2026 data
 surv2026 <- read.csv("C:/Users/deprengm/Denver Botanic Gardens/Conservation - General/AllProjectsBySpecies/Penstemon-penlandii/Data/2026_pepe_triState_data2upload.csv")
+
+surv2026 <- surv2026 %>%
+  replace_na(list(height..cm. = 0))
+
+table(surv2026$height..cm., useNA = "ifany")
 
 ```
 
@@ -145,40 +151,10 @@ table(surv2023_2024$date, surv2023_2024$transplantSeason)
 
 ## 10 extra records in spring and fall, that's 40 if both have duplicate records, additionally 5 to 10 but that's 50, not 55!!
 ## Looks like 2, 4, 6, 8, and 10 got double observers and then we stopped doing doubles
-# surv2023_2024 %>%
-#   group_by(date, plantID) %>%
-#   mutate(recordedBy = paste0("Obs", row_number())) %>%
-#   filter(date == "2024-06-24" & transplantSeason %in% c("Spring","Fall")) %>%
-#   group_by(plantID, transectID, transplantSeason, transectPosition) %>%
-#   summarise(n = n()) %>%
-#   filter(n > 1) %>%
-#   print(n = 48)
-
 ## Five transects got double observations in 2024. That means 25 fall and 25 spring were double counted. 
-# surv2023_2024  %>%
-#   group_by(date, plantID) %>%
-#   mutate(recordedBy = paste0("Obs", row_number())) %>%
-#   filter(plantID %in% c(10:14,16:19,31:40,81:85,87:90,110:118,145,148:151,167:170,1752)) %>%
-#   select(plantID, date, heightInCentimeters, recordedBy, transplantSeason, transectPosition, transectID) %>%
-#   arrange(plantID, date, transectID, transectPosition) %>%
-#   group_by(date, transectPosition, transectID) %>%
-#   summarise(n = n()) %>%
-#   filter(n > 1) %>%
-#   print(n = 47)
-  
-
 
 ## I did double observations in 2024. For now keep one, or do first and second measurement
 surv2023_2024 <- surv2023_2024 %>%
-  # mutate(recordedBy = case_when(recordedBy == "Michael Bone, Stanton Schell" ~ "MB_SS",
-  #                               recordedBy == "Mike Bone, Stanton Schell" ~ "MB_SS",
-  #                               recordedBy == "Arich Fruehling, Leah Veldhuisen" ~ "AF_LV",
-  #                              v recordedBy == "Geena Poulter, Michelle DePrenger-Levin" ~ "GP_MEDL",
-  #                               recordedBy == "Michelle DePrenger-Levin" ~ "MEDL",
-  #                               recordedBy == "Michelle DePrenger-Levin, Adriana Jacobi" ~ "MEDL_AJ",
-  #                               recordedBy == "Michael Guidi, Brooke Washburn, Syed Jalalzai" ~ "MG_BW_SJ",
-  #                               TRUE ~ recordedBy
-  #                               ))
   group_by(plantID, date) %>%
   mutate(recordedBy = paste0("Obs", row_number())) 
 
@@ -363,6 +339,7 @@ pepe23_26 <- surv2023_2024 %>%
 
 table(surv2023_2024$recordedBy, surv2023_2024$date)
 
+## keep duplicate observations
 pepe23_26_Robust <- surv2023_2024_robust %>%
   mutate(transplantSeason = case_when( !(transplantSeason %in% c("Spring", "Fall")) ~ NA,
                                        TRUE ~ transplantSeason)) %>%
@@ -1055,15 +1032,31 @@ surv2023_2024 %>%
   summarise(n = n()) %>%
   print(n = 150)
 
-surv2023_2024_robust %>%
-  group_by(transectID, date, recordedBy) %>%
+pepe23_26_Robust %>%
+  group_by(transectID, Year, recordedBy) %>%
   summarise(n = n()) %>%
 ggplot(  aes(transectID, n, color = recordedBy)) +
   geom_point(position = position_dodge(width = 0.1))+
-  facet_wrap(~date)
+  facet_wrap(~Year)
 
-### need to treat may and october as Obs1 and Obs2 for 2023
-### why aren't there 
+pepe23_26_Robust %>%
+  filter(recordedBy == "Obs3")
+## 144, 152
+pepe23_26_Robust %>%
+  filter(plantID %in% c(144,152))
+
+pepe23_26_Robust %>%
+  filter(Year == 2024) %>%
+  filter(heightInCentimeters > 0 & !is.na(heightInCentimeters)) %>%
+  filter(recordedBy == "Obs2") %>%
+  # Only a few did second surveys in 2024
+  group_by(transectID, recordedBy) %>%
+  summarise(n = n()) %>%
+  print(n = 25)
+## 25 of the 40 (37 after 15,16,21 out) 67.6% were double read
+## 1,2,3,4,5,6,7,8,9,10,11,13,14,17,18,19,22,23,24,26,27,28,29,30,37
+## missed: 12,20,25,31,32,33,34,35,36,38,39,40
+
 ```
 
 Transect    surveys
@@ -1191,7 +1184,7 @@ p.missingTransect <- pindex %>%
   filter(group %in% c(15,21,16))
 ### In 2026, have all zeros for the dummy last second observation
 p.missing7 <- pindex %>%
-  filter(session == "2026" & Time == 1
+  filter(session == "2026" & Time == 1)
 
 ## STart above here, make sure fixing variables is correct for 2026
 
@@ -1311,7 +1304,7 @@ pepeRobustTrans <- convert.inp("Data/Pepe_mark_multistateTrans.inp",
                        use.comments = FALSE)  
 
 # 0 for secondary and 1 for last secondary !! This is the interval between occasions, should be one less than surveys, but between 4 and 5 is primary, a year!? So there is a dummy second 2025 observation that doesn't exist
-time.intervals <- c(0,1,0,1,0)
+time.intervals <- c(0,1,0,1,0,0)
 
 pepe.pr.transplants <- process.data(pepeRobustTrans, model = "CRDMSOHug", begin.time = 2023, groups = "Trans",
                                # strata.labels = c("R","V"),
@@ -1375,7 +1368,7 @@ Huggins.pepe.transplants <- mark(pepe.pr.transplants, pepe.dd.transplants, model
                                              c = list(formula = ~ stratum, 
                                                       fixed = list(index = c.indices, value = c.values))))
 
-
+### Fix, can't have multistrata in one session
 
 Psi.table.transplants <- get.real(Huggins.pepe.transplants, "Psi", se = TRUE) %>%
   distinct(estimate, lcl, ucl, .keep_all = TRUE) %>%
@@ -1432,6 +1425,7 @@ Appendix <- surv2023_2024 %>%
                                        TRUE ~ transplantSeason)) %>%
   mutate(transectPosition = as.numeric(transectPosition)) %>%
   bind_rows(plants25toadd) %>%
+  bind_rows(plants26toadd) %>%
     mutate(date = case_when(date == "6/25/2025" ~ "6/24/2025",
                             ## To make averages for the few doubles in 2023
                             date == "2023-05-31" ~ "2023-10-16",
@@ -1461,7 +1455,7 @@ Appendix %>%
                           heightInCentimeters == 0 ~ 0)) %>%
   ## All have to be alive in the first year
   filter(!(Year == 2023 & surv == 0)) %>%
-  write.csv("2023_2025_Penstemon-penlandii_existing.csv")
+  write.csv("2023_2026_Penstemon-penlandii_existing.csv")
 
 
 Appendix %>%
@@ -1477,7 +1471,7 @@ Appendix %>%
                           heightInCentimeters == 0 ~ 0)) %>%
   ## All have to be alive in the first year
   filter(!(Year == 2023 & surv == 0)) %>%
-  write.csv("2023_2025_Penstemon-penlandii_transplants.csv")
+  write.csv("2023_2026_Penstemon-penlandii_transplants.csv")
 
 #############################################################################################
 
@@ -1490,7 +1484,7 @@ Missing some of the individuals, should only use this once I can check it better
 ```{r}
 
 ## Given the starting height, not the current height
-ggsave(filename = "Figures/2024-2025_SurvXHeight.jpg",
+ggsave(filename = "Figures/2024-2026_SurvXHeight.jpg",
 
 Appendix %>%
   filter(isTransplant == 1) %>%
@@ -1523,7 +1517,7 @@ width=220, height=100,units='mm', dpi=300)
 ```
 
 
-Figure 3 - can't figure it out. removing for now
+Figure 3 
 ```{r}
 Appendix %>%
   filter(isTransplant == 1) %>%
@@ -1538,7 +1532,7 @@ Appendix %>%
   filter(heightInCentimeters > 0 & !is.na(heightInCentimeters)) %>%
   summarise(PercSurv = n()/5) %>%
   filter(Year != 2023) %>%
-ggplot(  aes(transplantSeason, PercSurv, fill = Year)) +
+ggplot(  aes(Year, PercSurv, fill = transplantSeason)) +
   geom_boxplot(position = position_dodge(width = 1)) +
   geom_point(position = position_jitterdodge(dodge.width = 1))+
   theme_bw() +
@@ -1548,10 +1542,11 @@ ggplot(  aes(transplantSeason, PercSurv, fill = Year)) +
 
 
 # Year, reproductive status, and season of transplant, give the reproductive status in 2023, not the count of statuses. 
-# CountStage <- 
+CountStage <-
   surv2023_2024 %>%
   mutate(transectPosition = as.numeric(transectPosition)) %>%
   bind_rows(plants25toadd) %>%
+    bind_rows(plants26toadd) %>%
   filter(isTransplant == 1) %>%
   filter(((date == "2023-10-16" & transplantSeason == "Fall") | (date == "2023-05-31" & transplantSeason ==  "Spring"))) %>%
   ## Can ignore the 5 repeat collections of Fall transplants
@@ -1567,12 +1562,15 @@ ggplot(  aes(transplantSeason, PercSurv, fill = Year)) +
 # Use wide format to estimate survival of transplants given their initial size, reproductive status, and transplant season
 # before unite and then merge CountStage minus year and the pivot long again. 
 
+## START HERE!!! ### 
+### The larger reproductive ones probably were older, reproduced and died, the larger vegetative ones (in the spring) had a really high survival rate and persisted when planted in the spring
  SurvXInit <-
    surv2023_2024 %>%
   mutate(transplantSeason = case_when( !(transplantSeason %in% c("Spring", "Fall")) ~ NA,
                                        TRUE ~ transplantSeason)) %>%
   mutate(transectPosition = as.numeric(transectPosition)) %>%
   bind_rows(plants25toadd) %>%
+   bind_rows(plants26toadd) %>%
   filter(!(transectID %in% c(15, 21,16))) %>%
   filter(isTransplant == 1) %>%
   ## Can ignore the 5 repeat collections of Fall transplants
@@ -1601,7 +1599,7 @@ ggplot(  aes(transplantSeason, PercSurv, fill = Year)) +
                  values_fill = list(ch = 0)) %>%
     # distinct() %>%
   left_join(CountStage, by = c("plantID", "transectID","transplantSeason", "transectPosition","isTransplant")) %>%
-   pivot_longer(col = c("2024","2025"), names_to = "Year", values_to = "ch") 
+   pivot_longer(col = c("2024","2025","2026"), names_to = "Year", values_to = "ch") 
 
 ggplot(SurvXInit,  aes(Initheight, ch, color = as.factor(InitreproStatus))) +
   geom_point(pch = "|")+
@@ -1625,6 +1623,7 @@ ggplot(  aes(as.factor(InitreproStatus), PerSurv, color = Year)) +
   scale_color_manual("Year",values = c("tomato","black"))
 
 ggsave(filename = "Figures/SurvivalXInitStageXSeason.jpg",
+       
 SurvXInit %>%
   group_by(transectID, Year, InitreproStatus, transplantSeason) %>%
   summarise(PerSurv = sum(ch)/n()) %>%
