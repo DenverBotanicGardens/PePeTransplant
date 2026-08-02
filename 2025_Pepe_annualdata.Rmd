@@ -529,7 +529,7 @@ surv_wide <- surv_wide %>%
 
 ```
 
-
+missing transect 28 ( in addition to 15, 16, 21 that have been removed.) 28 is a treatment, are there really only transplants in 28? Nothing else? could be
 ## Shouldn't penalize plots for having transplants with lower survival 
 ```{r}
 pepe_ch <- surv_wide %>%
@@ -962,6 +962,12 @@ table(multi.ddl.ms$Psi[,c("stratum","tostratum")])
 
 ## No need to fix, surveyed everything once, already removed 15, 16, and 21
 
+TreatTransdf <- trans2024 %>%
+  rename(Type = type_CT_TT) %>%
+  mutate(Type = as.factor(Type),
+         Trans = as.factor(transectId),
+         block = as.factor(block)) %>%
+  dplyr::select(Trans, block, Type)
 ```
 
 ```{r}
@@ -971,14 +977,12 @@ multi.mark.pepe <- mark(multi.proc.ms, multi.ddl.ms, begin.time = 2023, model = 
                                                 Psi = list(formula = ~ -1 + stratum:tostratum:Trans))) 
 
 Phi.table <- get.real(multi.mark.pepe, "S", se = TRUE) %>%
-  distinct(stratum, group, Trans, estimate, lcl, ucl) %>%  # , .keep_all = TRUE
-  left_join(TransTreatdf) %>%
-  filter(!is.na(Type))
+  left_join(TreatTransdf) %>%
+  distinct(stratum, group, Trans, estimate, lcl, ucl, V,R, Type) 
 
-Psi.table <- get.real(multi.mark.pepe, "Psi", se = TRUE) %>%
-  distinct(stratum, tostratum, R, V, toR, group, Trans, estimate, lcl, ucl) %>%  
-  left_join(TransTreatdf)%>%
-  filter(!is.na(Type))
+Psi.table <- get.real(multi.mark.pepe, "Psi", se = TRUE) %>%  
+  left_join(TreatTransdf) %>%
+  distinct(stratum, tostratum, R, V, toR, group, Trans, estimate, lcl, ucl, Type) 
 
 
 ```
@@ -999,12 +1003,79 @@ Psi.table %>%
 
 ## Break into types for groups, not transect numbers. 
 
+```{r}
+
+typeMultidf <- stage_ch %>%
+  distinct(type_CT_TT)
+
+dmTypemulti <- model.matrix(~ -1 + type_CT_TT, stage_ch)
+dimnames(dmTypemulti)[[2]][length(dimnames(dmTypemulti)[[2]])]
+
+stage_ch %>%
+  dplyr::select(ch) %>% # only keep the capture history
+  bind_cols(dmTypemulti) %>%   # bind the design matrix based on Type
+  mutate(type_CT_TTTT = paste(type_CT_TTTT, ";", sep= "")) %>%   # add a semicolon to every row of type TT
+  write.table(file = "Data/PepeMultiType_mark.inp", sep = " ", col.names = FALSE, row.names = FALSE)
+
+pepeMultistage <- convert.inp("Data/PepeMultiType_mark.inp",
+                       group.df = typeMultidf,
+                       covariates = NULL,
+                       use.comments = FALSE)
 
 
+multi.proc.type <- process.data(stage_ch, begin.time = 2023, model = "Multistrata", groups = "type_CT_TT")
+multi.ddl.type <- make.design.data(multi.proc.type)
+
+```
+
+```{r}
+multi.mark.pepeType <- mark(multi.proc.type, multi.ddl.type, begin.time = 2023, model = "Multistrata",
+                        model.parameters = list(S = list(formula = ~ 1 + type_CT_TT),
+                                                p = list(formula = ~ 1),
+                                                Psi = list(formula = ~ -1 + stratum:tostratum:type_CT_TT))) 
+
+Phi.table.type <- get.real(multi.mark.pepeType, "S", se = TRUE) %>%
+  distinct(stratum, group, type_CT_TT, estimate, lcl, ucl, V, R)  # , .keep_all = TRUE
+
+Psi.table.type <- get.real(multi.mark.pepeType, "Psi", se = TRUE) %>%
+  distinct(stratum, tostratum, R, V, toR, group, type_CT_TT, estimate, lcl, ucl) 
 
 
+```
 
 
+```{r}
+Phi.table.type %>%
+  ggplot(  aes(type_CT_TT,estimate,  color = stratum)) +
+    geom_point(position = position_dodge(width = .75)) +
+    geom_errorbar(aes(ymin = lcl, ymax = ucl),position = position_dodge(width = .75))
+
+Psi.table.type %>%
+  ggplot(  aes(type_CT_TT, estimate, color = tostratum)) +
+    geom_point(position = position_dodge(width = .75)) +
+    geom_errorbar(aes(ymin = lcl, ymax = ucl),position = position_dodge(width = .75))
+```
+
+
+# Bring Multistrata (not robust) down with Pradel for matrix models and growth rate
+## Multistrata and Pradel
+```{r}
+## probability that the Veg survives and doesn't transition
+MPM.pepe <- matrix( c(Phi.table$estimate[Phi.table$stratum == "V"] * (1-Psi.table$Psi[Psi.table$stratum == "V"]),
+      ## probability that the Reproductive transitions to veg + recruitment (from Pradel)              
+                     (Phi.table$Phi[Phi.table$stratum == "R"] * Psi.table$Psi[Psi.table$stratum == "R"]) + f.all$estimate,
+      ## probability that veg survives and transitions
+                     (Phi.table$Phi[Phi.table$stratum == "V"] * (Psi.table$Psi[Psi.table$stratum == "V"])),
+      ## Probability that Reprodutive stays and survives
+                     (Phi.table$Phi[Phi.table$stratum == "R"] * (1-Psi.table$Psi[Psi.table$stratum == "R"]))),
+      nrow = 2,
+      byrow = TRUE)
+
+lambda(MPM.pepe)
+sensitivity(MPM.pepe)
+elasticity(MPM.pepe)
+
+```
 
 
 
