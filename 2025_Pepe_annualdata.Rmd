@@ -493,21 +493,11 @@ surv_wide_stage <-
   tidyr::replace_na(list(transectPosition = 0, transplantSeason = "None", isTransplant = 0)) %>%
   filter(!is.na(heightInCentimeters)) %>%
   group_by(Year,plantID,transectID,isTransplant, transplantSeason, transectPosition) %>%
-  dplyr::summarise( # height = mean(heightInCentimeters, na.rm = TRUE),
-         # width = mean(basalWidthInCentimeters, na.rm = TRUE),
-         ch = ifelse(any(reproductiveStatus > 0) & any(heightInCentimeters > 0), "R", "V"),
-         # numReprod = max(numberReproductiveStructures, na.rm = TRUE)
-         ) %>%
+  dplyr::summarise(Stage = ifelse(any(reproductiveStatus > 0) & any(heightInCentimeters > 0), "R", "V")) %>%
   ungroup() %>%
-  # distinct() %>%
-  # mutate(ch = case_when(heightInCentimeters > 0  & reproductiveStatus > 0 ~ "R",
-  #                       heightInCentimeters == 0 & reproductiveStatus == 0 ~ "V",
-  #                       is.na(heightInCentimeters) ~ "0",
-  #                       heightInCentimeters == 0 ~ "0",
-  #                       TRUE ~ "0")) %>%
   pivot_wider(names_from = Year,
               id_cols = c(plantID, transectID, transplantSeason, transectPosition,isTransplant),
-              values_from = ch, values_fill = "0") %>%
+              values_from = Stage, values_fill = "0") %>%
   arrange(transectID,transplantSeason)
 
 ## we removed one transplant transect, 19 slots left of the 20 transect transplants
@@ -528,7 +518,8 @@ surv_wide_stage %>%
   filter(grepl("NA",ch))
 
 surv_wide_stage <- surv_wide_stage %>%
-  filter(!(grepl("NA",ch)))
+  filter(!(grepl("NA",ch))) %>%           # Needs no NAs
+  filter((grepl("R",ch) | grepl("V",ch))) # Can't be all zeros
 
 surv_wide %>%
   filter(plantID %in% c(11,16,12,17,18,19))
@@ -933,18 +924,86 @@ f.all <- get.real(Pradel.pepe.all, "f", se = TRUE) %>%
 
 ```
 
-START HERE !!!!!  
+
 https://github.com/DenverBotanicGardens/PVA/blob/d8712bf5086b7db419544d02bc3a5d2bccaa36f0/DormancyDetection_MPMMark-recapture.Rmd#L280
 from https://github.com/DenverBotanicGardens/PePeTransplant/blob/main/2025_Pepe_annualdata.Rmd
 Multistrata   
 ## see "Multistrata and Pradel" below
 ```{r}
 
-pepeMulti <- convert.inp()
+stage_ch <- surv_wide_stage %>% 
+  filter(isTransplant != 1)%>%
+              left_join(trans2024[,2:4], by = c("transectID" = "transectId")) %>%
+  mutate(Trans = as.factor(transectID),
+         Type = as.factor(type_CT_TT)) %>%
+  filter(!is.na(Trans))
 
-multi.proc.ms <- process.data()
+plotMultidf <- stage_ch %>%
+  distinct(Trans)
+dmPlotmulti <- model.matrix(~ -1 + Trans, stage_ch)
+dimnames(dmPlotmulti)[[2]][length(dimnames(dmPlotmulti)[[2]])]
+
+stage_ch %>%
+  dplyr::select(ch) %>% # only keep the capture history
+  bind_cols(dmPlotmulti) %>%   # bind the design matrix based on Trans
+  mutate(Trans40 = paste(Trans40, ";", sep= "")) %>%   # add a semicolon to every row of Trans40
+  write.table(file = "Data/PepeMulti_mark.inp", sep = " ", col.names = FALSE, row.names = FALSE)
+
+pepeMultistage <- convert.inp("Data/PepeMulti_mark.inp",
+                       group.df = plotMultidf,
+                       covariates = NULL,
+                       use.comments = FALSE)
+
+
+multi.proc.ms <- process.data(stage_ch, begin.time = 2023, model = "Multistrata", groups = "Trans")
+multi.ddl.ms <- make.design.data(multi.proc.ms)
+
+table(multi.ddl.ms$Psi[,c("stratum","tostratum")])
+
+## No need to fix, surveyed everything once, already removed 15, 16, and 21
 
 ```
+
+```{r}
+multi.mark.pepe <- mark(multi.proc.ms, multi.ddl.ms, begin.time = 2023, model = "Multistrata",
+                        model.parameters = list(S = list(formula = ~ 1 + Trans),
+                                                p = list(formula = ~ 1),
+                                                Psi = list(formula = ~ -1 + stratum:tostratum:Trans))) 
+
+Phi.table <- get.real(multi.mark.pepe, "S", se = TRUE) %>%
+  distinct(stratum, group, Trans, estimate, lcl, ucl) %>%  # , .keep_all = TRUE
+  left_join(TransTreatdf) %>%
+  filter(!is.na(Type))
+
+Psi.table <- get.real(multi.mark.pepe, "Psi", se = TRUE) %>%
+  distinct(stratum, tostratum, R, V, toR, group, Trans, estimate, lcl, ucl) %>%  
+  left_join(TransTreatdf)%>%
+  filter(!is.na(Type))
+
+
+```
+
+```{r}
+Phi.table %>%
+  ggplot(  aes(group,estimate,  color = Type)) +
+    geom_point(position = position_dodge(width = .75)) +
+    geom_errorbar(aes(ymin = lcl, ymax = ucl),position = position_dodge(width = .75))+
+    facet_wrap(~ stratum)
+
+Psi.table %>%
+  ggplot(  aes(Type, estimate, color = group)) +
+    geom_point(position = position_dodge(width = .75)) +
+    geom_errorbar(aes(ymin = lcl, ymax = ucl),position = position_dodge(width = .75))+
+    facet_grid( ~ tostratum)
+```
+
+## Break into types for groups, not transect numbers. 
+
+
+
+
+
+
 
 
 
