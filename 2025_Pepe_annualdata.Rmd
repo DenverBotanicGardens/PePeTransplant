@@ -893,15 +893,15 @@ Pradel.pepe <- mark(pepe.proc.Prad, pepe.dd.Prad, model = "Pradrec",
                                             Phi = list(formula = ~ 1),
                                             f = list(formula = ~ 1 + Trans)))
 
-Phi.table <- get.real(Pradel.pepe, "Phi", se = TRUE) %>%
+Phi.table.pradel <- get.real(Pradel.pepe, "Phi", se = TRUE) %>%
   distinct(estimate, lcl, ucl, .keep_all = TRUE) %>%
   left_join(TransTreatdf) 
 
-f.table <- get.real(Pradel.pepe, "f", se = TRUE) %>%
+f.table.pradel <- get.real(Pradel.pepe, "f", se = TRUE) %>%
   distinct(estimate, lcl, ucl, .keep_all = TRUE) %>%
   left_join(TransTreatdf) 
 
-ggplot(f.table, aes(Type, estimate, color = as.factor(block))) +
+ggplot(f.table.pradel, aes(Type, estimate, color = as.factor(block))) +
   geom_point(position = position_dodge(width = .3)) +
   geom_errorbar(aes(ymin = lcl, ymax = ucl),position = position_dodge(width = .3))+
   theme_bw() +
@@ -976,11 +976,11 @@ multi.mark.pepe <- mark(multi.proc.ms, multi.ddl.ms, begin.time = 2023, model = 
                                                 p = list(formula = ~ 1),
                                                 Psi = list(formula = ~ -1 + stratum:tostratum:Trans))) 
 
-Phi.table <- get.real(multi.mark.pepe, "S", se = TRUE) %>%
+Phi.table.multi <- get.real(multi.mark.pepe, "S", se = TRUE) %>%
   left_join(TreatTransdf) %>%
   distinct(stratum, group, Trans, estimate, lcl, ucl, V,R, Type) 
 
-Psi.table <- get.real(multi.mark.pepe, "Psi", se = TRUE) %>%  
+Psi.table.multi <- get.real(multi.mark.pepe, "Psi", se = TRUE) %>%  
   left_join(TreatTransdf) %>%
   distinct(stratum, tostratum, R, V, toR, group, Trans, estimate, lcl, ucl, Type) 
 
@@ -988,13 +988,13 @@ Psi.table <- get.real(multi.mark.pepe, "Psi", se = TRUE) %>%
 ```
 
 ```{r}
-Phi.table %>%
+Phi.table.multi %>%
   ggplot(  aes(group,estimate,  color = Type)) +
     geom_point(position = position_dodge(width = .75)) +
     geom_errorbar(aes(ymin = lcl, ymax = ucl),position = position_dodge(width = .75))+
     facet_wrap(~ stratum)
 
-Psi.table %>%
+Psi.table.multi %>%
   ggplot(  aes(Type, estimate, color = group)) +
     geom_point(position = position_dodge(width = .75)) +
     geom_errorbar(aes(ymin = lcl, ymax = ucl),position = position_dodge(width = .75))+
@@ -1006,15 +1006,16 @@ Psi.table %>%
 ```{r}
 
 typeMultidf <- stage_ch %>%
-  distinct(type_CT_TT)
+  distinct(type_CT_TT) %>%
+  rename(Type = type_CT_TT)
 
-dmTypemulti <- model.matrix(~ -1 + type_CT_TT, stage_ch)
+dmTypemulti <- model.matrix(~ -1 + Type, stage_ch)
 dimnames(dmTypemulti)[[2]][length(dimnames(dmTypemulti)[[2]])]
 
 stage_ch %>%
   dplyr::select(ch) %>% # only keep the capture history
   bind_cols(dmTypemulti) %>%   # bind the design matrix based on Type
-  mutate(type_CT_TTTT = paste(type_CT_TTTT, ";", sep= "")) %>%   # add a semicolon to every row of type TT
+  mutate(TypeTT = paste(TypeTT, ";", sep= "")) %>%   # add a semicolon to every row of type TT
   write.table(file = "Data/PepeMultiType_mark.inp", sep = " ", col.names = FALSE, row.names = FALSE)
 
 pepeMultistage <- convert.inp("Data/PepeMultiType_mark.inp",
@@ -1023,22 +1024,22 @@ pepeMultistage <- convert.inp("Data/PepeMultiType_mark.inp",
                        use.comments = FALSE)
 
 
-multi.proc.type <- process.data(stage_ch, begin.time = 2023, model = "Multistrata", groups = "type_CT_TT")
+multi.proc.type <- process.data(stage_ch, begin.time = 2023, model = "Multistrata", groups = "Type")
 multi.ddl.type <- make.design.data(multi.proc.type)
 
 ```
 
 ```{r}
 multi.mark.pepeType <- mark(multi.proc.type, multi.ddl.type, begin.time = 2023, model = "Multistrata",
-                        model.parameters = list(S = list(formula = ~ 1 + type_CT_TT),
+                        model.parameters = list(S = list(formula = ~ 1 + Type),
                                                 p = list(formula = ~ 1),
-                                                Psi = list(formula = ~ -1 + stratum:tostratum:type_CT_TT))) 
+                                                Psi = list(formula = ~ -1 + stratum:tostratum:Type))) 
 
 Phi.table.type <- get.real(multi.mark.pepeType, "S", se = TRUE) %>%
-  distinct(stratum, group, type_CT_TT, estimate, lcl, ucl, V, R)  # , .keep_all = TRUE
+  distinct(stratum, group, Type, estimate, lcl, ucl, V, R)  # , .keep_all = TRUE
 
 Psi.table.type <- get.real(multi.mark.pepeType, "Psi", se = TRUE) %>%
-  distinct(stratum, tostratum, R, V, toR, group, type_CT_TT, estimate, lcl, ucl) 
+  distinct(stratum, tostratum, R, V, toR, group, Type, estimate, lcl, ucl) 
 
 
 ```
@@ -1046,12 +1047,12 @@ Psi.table.type <- get.real(multi.mark.pepeType, "Psi", se = TRUE) %>%
 
 ```{r}
 Phi.table.type %>%
-  ggplot(  aes(type_CT_TT,estimate,  color = stratum)) +
+  ggplot(  aes(Type,estimate,  color = stratum)) +
     geom_point(position = position_dodge(width = .75)) +
     geom_errorbar(aes(ymin = lcl, ymax = ucl),position = position_dodge(width = .75))
 
 Psi.table.type %>%
-  ggplot(  aes(type_CT_TT, estimate, color = tostratum)) +
+  ggplot(  aes(Type, estimate, color = tostratum)) +
     geom_point(position = position_dodge(width = .75)) +
     geom_errorbar(aes(ymin = lcl, ymax = ucl),position = position_dodge(width = .75))
 ```
@@ -1061,9 +1062,12 @@ Psi.table.type %>%
 ## Multistrata and Pradel
 ```{r}
 ## probability that the Veg survives and doesn't transition
-MPM.pepe <- matrix( c(Phi.table$estimate[Phi.table$stratum == "V"] * (1-Psi.table$Psi[Psi.table$stratum == "V"]),
+MPM.pepe.control <- matrix( c(Phi.table.type$estimate[Phi.table.type$stratum == "V" & 
+                                                        Phi.table.type$Type == "CT"] *
+                                (1-Psi.table.type$estimate[Psi.table.type$tostratum == "R" & 
+                                                        Phi.table.type$Type == "CT"]),
       ## probability that the Reproductive transitions to veg + recruitment (from Pradel)              
-                     (Phi.table$Phi[Phi.table$stratum == "R"] * Psi.table$Psi[Psi.table$stratum == "R"]) + f.all$estimate,
+                     (Phi.table.pradel$Phi[Phi.table$stratum == "R"] * Psi.table$Psi[Psi.table$stratum == "R"]) + f.all$estimate,
       ## probability that veg survives and transitions
                      (Phi.table$Phi[Phi.table$stratum == "V"] * (Psi.table$Psi[Psi.table$stratum == "V"])),
       ## Probability that Reprodutive stays and survives
