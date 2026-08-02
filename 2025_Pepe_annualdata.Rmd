@@ -1066,18 +1066,121 @@ MPM.pepe.control <- matrix( c(Phi.table.type$estimate[Phi.table.type$stratum == 
                                                         Phi.table.type$Type == "CT"] *
                                 (1-Psi.table.type$estimate[Psi.table.type$tostratum == "R" & 
                                                         Phi.table.type$Type == "CT"]),
+                              
       ## probability that the Reproductive transitions to veg + recruitment (from Pradel)              
-                     (Phi.table.pradel$Phi[Phi.table$stratum == "R"] * Psi.table$Psi[Psi.table$stratum == "R"]) + f.all$estimate,
+                     (Psi.table.type$estimate[Psi.table.type$tostratum == "V" & 
+                                                        Psi.table.type$Type == "CT"]) *
+  Phi.table.type$estimate[Psi.table.type$stratum == "R" & Phi.table.type$Type == "CT"] + f.all$estimate,
+  
       ## probability that veg survives and transitions
-                     (Phi.table$Phi[Phi.table$stratum == "V"] * (Psi.table$Psi[Psi.table$stratum == "V"])),
-      ## Probability that Reprodutive stays and survives
-                     (Phi.table$Phi[Phi.table$stratum == "R"] * (1-Psi.table$Psi[Psi.table$stratum == "R"]))),
+                     Phi.table.type$estimate[Phi.table.type$stratum == "V" & 
+                                               Phi.table.type$Type == "CT"] *
+    (Psi.table.type$estimate[Psi.table.type$tostratum == "R" & 
+                               Phi.table.type$Type == "CT"]),
+  
+      ## Probability that Reproductive stays and survives
+  c(Phi.table.type$estimate[Phi.table.type$stratum == "R" & 
+                              Phi.table.type$Type == "CT"] *
+                                (1-Psi.table.type$estimate[Psi.table.type$tostratum == "V" & 
+                                                        Phi.table.type$Type == "CT"]))),
       nrow = 2,
       byrow = TRUE)
 
-lambda(MPM.pepe)
-sensitivity(MPM.pepe)
-elasticity(MPM.pepe)
+lambda(MPM.pepe.control)
+sensitivity(MPM.pepe.control)
+elasticity(MPM.pepe.control)
+
+
+MPM.pepe.transplant <- matrix( c(Phi.table.type$estimate[Phi.table.type$stratum == "V" & 
+                                                        Phi.table.type$Type == "TT"] *
+                                (1-Psi.table.type$estimate[Psi.table.type$tostratum == "R" & 
+                                                        Phi.table.type$Type == "TT"]),
+                              
+      ## probability that the Reproductive transitions to veg + recruitment (from Pradel)              
+                     (Psi.table.type$estimate[Psi.table.type$tostratum == "V" & 
+                                                        Psi.table.type$Type == "TT"]) *
+  Phi.table.type$estimate[Psi.table.type$stratum == "R" & Phi.table.type$Type == "TT"] + f.all$estimate,
+  
+      ## probability that veg survives and transitions
+                     Phi.table.type$estimate[Phi.table.type$stratum == "V" & 
+                                               Phi.table.type$Type == "TT"] *
+    (Psi.table.type$estimate[Psi.table.type$tostratum == "R" & 
+                               Phi.table.type$Type == "TT"]),
+  
+      ## Probability that Reproductive stays and survives
+  c(Phi.table.type$estimate[Phi.table.type$stratum == "R" & 
+                              Phi.table.type$Type == "TT"] *
+                                (1-Psi.table.type$estimate[Psi.table.type$tostratum == "V" & 
+                                                        Phi.table.type$Type == "TT"]))),
+      nrow = 2,
+      byrow = TRUE)
+
+lambda(MPM.pepe.transplant)
+sensitivity(MPM.pepe.transplant)
+elasticity(MPM.pepe.transplant)
+
+
+```
+
+
+## Only the transplants
+```{r}
+
+stage_ch.transplants <- surv_wide_stage %>% 
+  filter(isTransplant == 1)%>%
+              left_join(trans2024[,2:4], by = c("transectID" = "transectId")) %>%
+  mutate(Trans = as.factor(transectID),
+         Type = as.factor(type_CT_TT)) 
+
+plotMultidf.trans <- stage_ch.transplants %>%
+  distinct(Trans)
+dmPlotmulti.transplant <- model.matrix(~ -1 + Trans, stage_ch.transplants)
+dimnames(dmPlotmulti.transplant)[[2]][length(dimnames(dmPlotmulti.transplant)[[2]])]
+
+stage_ch.transplants %>%
+  dplyr::select(ch) %>% # only keep the capture history
+  bind_cols(dmPlotmulti.transplant) %>%   # bind the design matrix based on Trans
+  mutate(Trans40 = paste(Trans40, ";", sep= "")) %>%   # add a semicolon to every row of Trans40
+  write.table(file = "Data/PepeMulti_mark_transplants.inp", sep = " ", col.names = FALSE, row.names = FALSE)
+
+pepeMultistage <- convert.inp("Data/PepeMulti_mark_transplants.inp",
+                       group.df = plotMultidf.trans,
+                       covariates = NULL,
+                       use.comments = FALSE)
+
+
+multi.proc.transplants <- process.data(stage_ch.transplants, begin.time = 2023, 
+                                       model = "Multistrata", groups = "Trans")
+multi.ddl.transplants <- make.design.data(multi.proc.transplants)
+
+table(multi.ddl.transplants$Psi[,c("stratum","tostratum")])
+
+## No need to fix, surveyed everything once, already removed 15, 16, and 21
+
+TreatTransdf.transplants <- trans2024 %>%
+  rename(Type = type_CT_TT) %>%
+  mutate(Type = as.factor(Type),
+         Trans = as.factor(transectId),
+         block = as.factor(block)) %>%
+  dplyr::select(Trans, block, Type) %>%
+  filter(Type == "TT")
+```
+
+```{r}
+multi.mark.pepe.transplants <- mark(multi.proc.transplants, multi.ddl.transplants, 
+                                    begin.time = 2023, model = "Multistrata",
+                        model.parameters = list(S = list(formula = ~ 1 + Trans),
+                                                p = list(formula = ~ 1),
+                                                Psi = list(formula = ~ -1 + stratum:tostratum:Trans))) 
+
+Phi.table.multi.transplants <- get.real(multi.mark.pepe.transplants, "S", se = TRUE) %>%
+  left_join(TreatTransdf.transplants) %>%
+  distinct(stratum, group, Trans, estimate, lcl, ucl, V,R, Type) 
+
+Psi.table.multi.transplants <- get.real(multi.mark.pepe.transplants, "Psi", se = TRUE) %>%  
+  left_join(TreatTransdf.transplants) %>%
+  distinct(stratum, tostratum, R, V, toR, group, Trans, estimate, lcl, ucl, Type) 
+
 
 ```
 
